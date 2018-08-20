@@ -2,6 +2,7 @@
 #include "filesystem.h"
 #include "Path.h"
 #include "StringBuilder.h"
+#include "StringEx.h"
 
 #include <limits.h>
 #include <unistd.h>
@@ -140,7 +141,7 @@ static void report_error(const char * line, const char * format, ...)
 	if (line != nullptr)
 		printf(">> %s\n", line);
 
-	printf("error: %s", text);
+	printf("error: %s\n", text);
 }
 
 static bool get_path_from_filename(const char * filename, char * path, int pathSize)
@@ -177,6 +178,14 @@ struct ChibiHeaderPath
 	bool expose = false;
 };
 
+struct ChibiCompileDefinition
+{
+	std::string name;
+	std::string value;
+	
+	bool expose = false;
+};
+
 struct ChibiLibrary
 {
 	std::string name;
@@ -191,6 +200,8 @@ struct ChibiLibrary
 	std::vector<std::string> package_dependencies;
 	
 	std::vector<ChibiHeaderPath> header_paths;
+	
+	std::vector<ChibiCompileDefinition> compile_definitions;
 	
 	void dump_info() const
 	{
@@ -245,6 +256,8 @@ static ChibiInfo s_chibiInfo;
 
 static ChibiLibrary * s_currentLibrary = nullptr;
 
+static std::string s_platform;
+
 static bool process_chibi_file(const char * filename)
 {
 	char chibi_path[PATH_MAX];
@@ -283,6 +296,22 @@ static bool process_chibi_file(const char * filename)
 					continue;
 				
 				char * linePtr = line;
+				
+				if (eat_word(linePtr, "with_platform"))
+				{
+					char * platform;
+					
+					if (!eat_word_v2(linePtr, platform))
+					{
+						report_error(line, "with_platform without platform");
+						return false;
+					}
+					
+					if (platform != s_platform)
+						continue;
+				}
+				
+				//
 				
 				if (eat_word(linePtr, "add"))
 				{
@@ -403,6 +432,10 @@ static bool process_chibi_file(const char * filename)
 						
 						bool traverse = false;
 						
+						std::vector<std::string> excluded_paths;
+						
+						char * platform = nullptr;
+						
 						for (;;)
 						{
 							char * option;
@@ -411,9 +444,35 @@ static bool process_chibi_file(const char * filename)
 								break;
 							
 							if (!strcmp(option, "traverse"))
-							{
-								printf("traverse!\n");
 								traverse = true;
+							else if (!strcmp(option, "platform"))
+							{
+								if (!eat_word_v2(linePtr, platform))
+									report_error(line, "missing platform name");
+							}
+							else if (!strcmp(option, "exclude_path"))
+							{
+								char * excluded_path;
+								
+								if (!eat_word_v2(linePtr, excluded_path))
+								{
+									report_error(line, "exclude_path without a path");
+									return false;
+								}
+								
+								char full_path[PATH_MAX];
+								if (!concat(full_path, sizeof(full_path), chibi_path, "/", excluded_path))
+								{
+									report_error(line, "failed to create absolute path");
+									return false;
+								}
+								
+								excluded_paths.push_back(full_path);
+							}
+							else
+							{
+								report_error(line, "unknown option: %s", option);
+								return false;
 							}
 						}
 						
@@ -424,6 +483,18 @@ static bool process_chibi_file(const char * filename)
 						for (auto & filename : filenames)
 						{
 							if (Path::GetExtension(filename, true) != extension)
+								continue;
+							
+							if (platform != nullptr && platform != s_platform)
+								continue;
+							
+							bool isExcluded = false;
+							
+							for (auto & excluded_path : excluded_paths)
+								if (String::StartsWith(filename, excluded_path))
+									isExcluded = true;
+							
+							if (isExcluded)
 								continue;
 							
 							ChibiLibraryFile file;
@@ -528,6 +599,8 @@ static bool process_chibi_file(const char * filename)
 						
 						bool expose = false;
 						
+						char * platform = nullptr;
+						
 						for (;;)
 						{
 							char * option;
@@ -537,6 +610,11 @@ static bool process_chibi_file(const char * filename)
 							
 							if (!strcmp(option, "expose"))
 								expose = true;
+							else if (!strcmp(option, "platform"))
+							{
+								if (!eat_word_v2(linePtr, platform))
+									report_error(line, "missing platform name");
+							}
 							else
 							{
 								report_error(line, "unknown option: %s", option);
@@ -544,6 +622,9 @@ static bool process_chibi_file(const char * filename)
 							}
 						}
 						
+						if (platform != nullptr && platform != s_platform)
+							continue;
+							
 						char full_path[PATH_MAX];
 						if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
 						{
@@ -556,6 +637,55 @@ static bool process_chibi_file(const char * filename)
 						header_path.expose = expose;
 						
 						s_currentLibrary->header_paths.push_back(header_path);
+					}
+				}
+				else if (eat_word(linePtr, "compile_definition"))
+				{
+					if (s_currentLibrary == nullptr)
+					{
+						report_error(line, "compile_definition without a target");
+						return false;
+					}
+					else
+					{
+						char * name;
+						char * value;
+						
+						if (!eat_word_v2(linePtr, name))
+						{
+							report_error(line, "missing name");
+							return false;
+						}
+						
+						if (!eat_word_v2(linePtr, value))
+						{
+							report_error(line, "missing value");
+							return false;
+						}
+						
+						if (!strcmp(value, "*"))
+							value = "";
+						
+						bool expose = false;
+						
+						for (;;)
+						{
+							char * option;
+							
+							if (!eat_word_v2(linePtr, option))
+								break;
+							
+							if (!strcmp(option, "expose"))
+								expose = true;
+						}
+						
+						ChibiCompileDefinition compile_definition;
+						
+						compile_definition.name = name;
+						compile_definition.value = value;
+						compile_definition.expose = expose;
+						
+						s_currentLibrary->compile_definitions.push_back(compile_definition);
 					}
 				}
 				else if (eat_word(linePtr, "resource_path"))
@@ -623,6 +753,63 @@ struct CMakeWriter
 		
 		return true;
 	};
+	
+	template <typename S>
+	static bool write_header_paths(S & sb, const ChibiLibrary & library)
+	{
+		if (!library.header_paths.empty())
+		{
+			for (auto & header_path : library.header_paths)
+			{
+				const char * visibility = header_path.expose
+					? "PUBLIC"
+					: "PRIVATE";
+				
+				sb.AppendFormat("target_include_directories(%s %s \"%s\")\n",
+					library.name.c_str(),
+					visibility,
+					header_path.path.c_str());
+			}
+			
+			sb.Append("\n");
+		}
+		
+		return true;
+	}
+	
+	template <typename S>
+	static bool write_compile_definitions(S & sb, const ChibiLibrary & library)
+	{
+		if (!library.compile_definitions.empty())
+		{
+			for (auto & compile_definition : library.compile_definitions)
+			{
+				const char * visibility = compile_definition.expose
+					? "PUBLIC"
+					: "PRIVATE";
+				
+				if (compile_definition.value.empty())
+				{
+					sb.AppendFormat("target_compile_definitions(%s %s %s)\n",
+						library.name.c_str(),
+						visibility,
+						compile_definition.name.c_str());
+				}
+				else
+				{
+					sb.AppendFormat("target_compile_definitions(%s %s %s=%s)\n",
+						library.name.c_str(),
+						visibility,
+						compile_definition.name.c_str(),
+						compile_definition.value.c_str());
+				}
+			}
+			
+			sb.Append("\n");
+		}
+		
+		return true;
+	}
 	
 	bool write()
 	{
@@ -702,22 +889,11 @@ struct CMakeWriter
 				sb.Append(")\n");
 				sb.Append("\n");
 				
-				if (!library->header_paths.empty())
-				{
-					for (auto & header_path : library->header_paths)
-					{
-						const char * visibility = header_path.expose
-							? "PUBLIC"
-							: "PRIVATE";
-						
-						sb.AppendFormat("target_include_directories(%s %s \"%s\")\n",
-							library->name.c_str(),
-							visibility,
-							header_path.path.c_str());
-					}
-					
-					sb.Append("\n");
-				}
+				if (!write_header_paths(sb, *library))
+					return false;
+				
+				if (!write_compile_definitions(sb, *library))
+					return false;
 				
 				if (!library->library_dependencies.empty())
 				{
@@ -762,6 +938,12 @@ struct CMakeWriter
 				sb.Append(")\n");
 				sb.Append("\n");
 				
+				if (!write_header_paths(sb, *app))
+					return false;
+				
+				if (!write_compile_definitions(sb, *app))
+					return false;
+				
 				if (!app->library_dependencies.empty())
 				{
 					for (auto & library_dependency : app->library_dependencies)
@@ -794,7 +976,9 @@ int main(int argc, const char * argv[])
 		report_error(nullptr, "failed to get current working directory");
 		return -1;
 	}
-
+	
+	s_platform = "macos";
+	
 	// todo : is SDL path normalized?
 
 	char current_path[PATH_MAX];

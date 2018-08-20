@@ -1,6 +1,14 @@
 library repo1
-	scan_files cpp traverse
-	scan_files h traverse
+	scan_files cpp traverse exclude_path macos
+	scan_files h   traverse exclude_path macos exclude_path windows
 	exclude_files excluded.cpp
+	
+	                      header_path .       expose
+	with_platform macos   header_path macos   expose
+	with_platform windows header_path windows expose
+
+	compile_definition OPTION_A 0
+	compile_definition OPTION_B 1
+	compile_definition OPTION_C *
+
 	depend_package opengl
-	header_path . expose
