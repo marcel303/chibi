@@ -11,4 +11,11 @@ library repo1
 	compile_definition OPTION_B 1
 	compile_definition OPTION_C *
 
+	compile_definition _USE_MATH_DEFINES       * toolchain msvc
+	compile_definition _CRT_SECURE_NO_WARNINGS * toolchain msvc
+
+	with_platform macos   compile_definition MACOS   *
+	with_platform linux   compile_definition LINUX   *
+	with_platform windows compile_definition WINDOWS *
+
 	depend_package opengl

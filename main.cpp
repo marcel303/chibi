@@ -13,6 +13,8 @@
 #define strcpy_s(d, l, s) strcpy(d, s)
 #define strcat_s(d, l, s) strcat(d, s)
 
+static ssize_t s_current_line_length = 0;
+
 static bool file_exist(const char * path)
 {
 	FILE * f = fopen(path, "rb");
@@ -138,9 +140,33 @@ static void report_error(const char * line, const char * format, ...)
 	vsprintf(text, format, ap);
 	va_end(ap);
 	
+	//
+	
 	if (line != nullptr)
-		printf(">> %s\n", line);
-
+	{
+		printf(">>");
+		
+		for (int i = 0; i < s_current_line_length; )
+		{
+			while (is_whitespace(line[i]))
+				i++;
+			
+			if (i < s_current_line_length)
+			{
+				printf(" %s", line + i);
+			
+				while (line[i] != 0)
+					i++;
+			
+				i++;
+			}
+		}
+		
+		printf("\n");
+	}
+	
+	//
+	
 	printf("error: %s\n", text);
 }
 
@@ -184,6 +210,8 @@ struct ChibiCompileDefinition
 	std::string value;
 	
 	bool expose = false;
+	
+	std::string toolchain;
 };
 
 struct ChibiLibrary
@@ -291,6 +319,8 @@ static bool process_chibi_file(const char * filename)
 			else
 			{
 				//printf("%s\n", line);
+				
+				s_current_line_length = r;
 				
 				if (is_comment_or_whitespace(line))
 					continue;
@@ -668,6 +698,8 @@ static bool process_chibi_file(const char * filename)
 						
 						bool expose = false;
 						
+						char * toolchain = "";
+						
 						for (;;)
 						{
 							char * option;
@@ -677,6 +709,19 @@ static bool process_chibi_file(const char * filename)
 							
 							if (!strcmp(option, "expose"))
 								expose = true;
+							else if (!strcmp(option, "toolchain"))
+							{
+								if (!eat_word_v2(linePtr, toolchain))
+								{
+									report_error(line, "missing name");
+									return false;
+								}
+							}
+							else
+							{
+								report_error(line, "unknown option: %s", option);
+								return false;
+							}
 						}
 						
 						ChibiCompileDefinition compile_definition;
@@ -684,6 +729,7 @@ static bool process_chibi_file(const char * filename)
 						compile_definition.name = name;
 						compile_definition.value = value;
 						compile_definition.expose = expose;
+						compile_definition.toolchain = toolchain;
 						
 						s_currentLibrary->compile_definitions.push_back(compile_definition);
 					}
@@ -711,6 +757,17 @@ static bool process_chibi_file(const char * filename)
 					report_error(line, "syntax error");
 					return false;
 				}
+				
+				// check we processed the entire line
+				
+				for (int i = 0; linePtr[i] != 0; ++i)
+				{
+					if (linePtr[i] != 0)
+					{
+						report_error(line, "unexpected text at end of line");
+						return false;
+					}
+				}
 			}
 		}
 
@@ -719,6 +776,14 @@ static bool process_chibi_file(const char * filename)
 
 		return true;
 	}
+}
+
+static const char * translate_toolchain_to_cmake(const std::string & name)
+{
+	if (name == "msvc")
+		return "MSVC";
+	
+	return nullptr;
 }
 
 struct CMakeWriter
@@ -784,6 +849,14 @@ struct CMakeWriter
 		{
 			for (auto & compile_definition : library.compile_definitions)
 			{
+				const char * toolchain = translate_toolchain_to_cmake(compile_definition.toolchain);
+				
+				if (toolchain != nullptr)
+				{
+					sb.AppendFormat("if (%s)\n", toolchain);
+					sb.Append("\t"); // todo : improved indent support
+				}
+				
 				const char * visibility = compile_definition.expose
 					? "PUBLIC"
 					: "PRIVATE";
@@ -802,6 +875,11 @@ struct CMakeWriter
 						visibility,
 						compile_definition.name.c_str(),
 						compile_definition.value.c_str());
+				}
+				
+				if (toolchain != nullptr)
+				{
+					sb.AppendFormat("endif (%s)\n", toolchain);
 				}
 			}
 			
@@ -977,7 +1055,15 @@ int main(int argc, const char * argv[])
 		return -1;
 	}
 	
+#if defined(MACOS)
 	s_platform = "macos";
+#elif defined(LINUX)
+	s_platform = "linux";
+#elif defined(WINDOWS)
+	s_platform = "windows";
+#else
+	#error unknown platform
+#endif
 	
 	// todo : is SDL path normalized?
 

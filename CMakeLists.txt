@@ -24,3 +24,15 @@ add_executable(chibi filesystem.cpp filesystem.h main.cpp)
 target_link_libraries(chibi PRIVATE ${FRAMEWORK_LIBRARIES})
 target_link_libraries(chibi PRIVATE framework)
 target_link_libraries(chibi PRIVATE libgg)
+
+if (WIN32)
+	target_compile_definitions(chibi PUBLIC MACOS)
+endif (WIN32)
+
+if (APPLE)
+	target_compile_definitions(chibi PUBLIC MACOS)
+endif (APPLE)
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+	target_compile_definitions(chibi PUBLIC LINUX)
+endif ()
