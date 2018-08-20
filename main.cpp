@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#define STRING_BUFFER_SIZE (1 << 14)
+
 #define strcpy_s(d, l, s) strcpy(d, s)
 #define strcat_s(d, l, s) strcat(d, s)
 
@@ -359,8 +361,32 @@ static bool process_chibi_file(const char * filename)
 						if (!concat(chibi_file, sizeof(chibi_file), chibi_path, "/", location, "/chibi.txt"))
 							return false;
 						
+						const int length = s_current_line_length;
 						if (!process_chibi_file(chibi_file))
 							return false;
+						s_current_line_length = length;
+					}
+				}
+				else if (eat_word(linePtr, "add_root"))
+				{
+					char * location;
+					
+					if (!eat_word_v2(linePtr, location))
+					{
+						report_error(line, "missing location");
+						return false;
+					}
+					else
+					{
+						char chibi_file[PATH_MAX];
+						
+						if (!concat(chibi_file, sizeof(chibi_file), chibi_path, "/", location, "/chibi_root"))
+							return false;
+						
+						const int length = s_current_line_length;
+						if (!process_chibi_file(chibi_file))
+							return false;
+						s_current_line_length = length;
 					}
 				}
 				else if (eat_word(linePtr, "library"))
@@ -889,6 +915,24 @@ struct CMakeWriter
 		return true;
 	}
 	
+	template <typename S>
+	static bool output(FILE * f, S & sb)
+	{
+		if (!sb.IsValid())
+		{
+			report_error(nullptr, "output buffer overflow");
+			return false;
+		}
+		
+		if (fprintf(f, "%s", sb.ToString()) < 0)
+		{
+			report_error(nullptr, "failed to write to disk");
+			return false;
+		}
+		
+		return true;
+	}
+	
 	bool write()
 	{
 		// gather the targets to emit
@@ -926,14 +970,15 @@ struct CMakeWriter
 		else
 		{
 			{
-				StringBuilder<4096> sb;
+				StringBuilder<STRING_BUFFER_SIZE> sb;
 				
 				sb.Append("cmake_minimum_required(VERSION 2.6)\n");
 				sb.Append("\n");
 				sb.Append("set(CMAKE_CXX_STANDARD 14)\n");
 				sb.Append("\n");
 				
-				fprintf(f, "%s", sb.ToString());
+				if (!output(f, sb))
+					return false;
 			}
 			
 			for (auto & library : libraries)
@@ -941,7 +986,7 @@ struct CMakeWriter
 				if (library->isExecutable)
 					continue;
 				
-				StringBuilder<4096> sb;
+				StringBuilder<STRING_BUFFER_SIZE> sb;
 				
 				sb.AppendFormat("# --- library %s ---\n", library->name.c_str());
 				sb.Append("\n");
@@ -985,7 +1030,8 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
-				fprintf(f, "%s", sb.ToString());
+				if (!output(f, sb))
+					return false;
 			}
 			
 			for (auto & app : libraries)
@@ -993,7 +1039,7 @@ struct CMakeWriter
 				if (app->isExecutable == false)
 					continue;
 				
-				StringBuilder<4096> sb;
+				StringBuilder<STRING_BUFFER_SIZE> sb;
 				
 				sb.AppendFormat("# --- app %s ---\n", app->name.c_str());
 				sb.Append("\n");
@@ -1034,7 +1080,8 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
-				fprintf(f, "%s", sb.ToString());
+				if (!output(f, sb))
+					return false;
 			}
 			
 			fclose(f);
@@ -1044,16 +1091,60 @@ struct CMakeWriter
 	}
 };
 
+static bool eat_arg(int & argc, const char **& argv, const char *& arg)
+{
+	if (argc == 0)
+		return false;
+	
+	arg = *argv;
+	
+	argc -= 1;
+	argv += 1;
+	
+	return true;
+}
+
 int main(int argc, const char * argv[])
 {
-	// todo : recursively find build_root
-	
 	char cwd[PATH_MAX];
-	if (getcwd(cwd, PATH_MAX) == nullptr)
+	cwd[0] = 0;
+	
+	bool run_cmake = false;
+	bool run_build = false;
+	
+	argc -= 1;
+	argv += 1;
+	
+	while (argc > 0)
 	{
-		report_error(nullptr, "failed to get current working directory");
-		return -1;
+		const char * option;
+		
+		if (!eat_arg(argc, argv, option))
+			break;
+		
+		if (!strcmp(option, "-cmake"))
+			run_cmake = true;
+		else if (!strcmp(option, "-build"))
+			run_build = true;
+		else
+		{
+			report_error(nullptr, "unknown command line option: %s", option);
+			return -1;
+		}
 	}
+	
+	if (cwd[0] == 0)
+	{
+		// get the current working directory. this is the root of our operations
+		
+		if (getcwd(cwd, PATH_MAX) == nullptr)
+		{
+			report_error(nullptr, "failed to get current working directory");
+			return -1;
+		}
+	}
+	
+	// set the platform name
 	
 #if defined(MACOS)
 	s_platform = "macos";
@@ -1065,7 +1156,7 @@ int main(int argc, const char * argv[])
 	#error unknown platform
 #endif
 	
-	// todo : is SDL path normalized?
+	// recursively find build_root
 
 	char current_path[PATH_MAX];
 	strcpy_s(current_path, sizeof(current_path), cwd);
@@ -1075,23 +1166,27 @@ int main(int argc, const char * argv[])
 
 	for (;;)
 	{
-		strcpy_s(build_root, sizeof(build_root), current_path);
-		strcat_s(build_root, sizeof(build_root), "/chibi_root");
+		char root_path[PATH_MAX];
+		strcpy_s(root_path, sizeof(root_path), current_path);
+		strcat_s(root_path, sizeof(root_path), "/chibi_root");
 
-		if (file_exist(build_root))
+		if (file_exist(root_path))
+		{
+			strcpy_s(build_root, sizeof(build_root), root_path);
+		}
+		
+		char * term = strrchr(current_path, '/');
+
+		if (term == nullptr)
 			break;
 		else
-		{
-			char * term = strrchr(current_path, '/');
-
-			if (term == nullptr)
-			{
-				report_error(nullptr, "failed to find chibi_root file");
-				return -1;
-			}
-			else
-				*term = 0;
-		}
+			*term = 0;
+	}
+	
+	if (build_root[0] == 0)
+	{
+		report_error(nullptr, "failed to find chibi_root file");
+		return -1;
 	}
 
 	// build_root should be valid here
