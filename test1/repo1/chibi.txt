@@ -1,0 +1,6 @@
+library repo1
+	scan_files cpp traverse
+	scan_files h traverse
+	exclude_files excluded.cpp
+	depend_package opengl
+	header_path . expose
