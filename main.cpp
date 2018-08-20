@@ -129,7 +129,7 @@ static bool concat(char * dst, int dstSize, const char * s1, const char * s2 = n
 		(s4 == nullptr || do_concat(dst, dstSize, s4));
 }
 
-static void report_error(const char * format, ...)
+static void report_error(const char * line, const char * format, ...)
 {
 	char text[1024];
 	va_list ap;
@@ -137,6 +137,9 @@ static void report_error(const char * format, ...)
 	vsprintf(text, format, ap);
 	va_end(ap);
 	
+	if (line != nullptr)
+		printf(">> %s\n", line);
+
 	printf("error: %s", text);
 }
 
@@ -153,7 +156,7 @@ static bool get_path_from_filename(const char * filename, char * path, int pathS
 
 	if (term == nullptr)
 	{
-		report_error("invalid path");
+		report_error(nullptr, "invalid path: %s", filename);
 		return false;
 	}
 
@@ -165,6 +168,13 @@ static bool get_path_from_filename(const char * filename, char * path, int pathS
 struct ChibiLibraryFile
 {
 	std::string filename;
+};
+
+struct ChibiHeaderPath
+{
+	std::string path;
+	
+	bool expose = false;
 };
 
 struct ChibiLibrary
@@ -180,7 +190,7 @@ struct ChibiLibrary
 	
 	std::vector<std::string> package_dependencies;
 	
-	std::vector<std::string> header_paths;
+	std::vector<ChibiHeaderPath> header_paths;
 	
 	void dump_info() const
 	{
@@ -193,7 +203,7 @@ struct ChibiLibrary
 		
 		for (auto & header_path : header_paths)
 		{
-			printf("\theader path: %s\n", header_path.c_str());
+			printf("\theader path: %s\n", header_path.path.c_str());
 		}
 	}
 };
@@ -241,7 +251,7 @@ static bool process_chibi_file(const char * filename)
 
 	if (!get_path_from_filename(filename, chibi_path, PATH_MAX))
 	{
-		report_error("failed to get path from chibi filename");
+		report_error(nullptr, "failed to get path from chibi filename");
 		return false;
 	}
 	
@@ -251,7 +261,7 @@ static bool process_chibi_file(const char * filename)
 
 	if (f == nullptr)
 	{
-		report_error("failed to open %s", filename);
+		report_error(nullptr, "failed to open %s", filename);
 		return false;
 	}
 	else
@@ -280,7 +290,7 @@ static bool process_chibi_file(const char * filename)
 					
 					if (!eat_word_v2(linePtr, location))
 					{
-						report_error("missing location: %s\n", line);
+						report_error(line, "missing location");
 						return false;
 					}
 					else
@@ -302,13 +312,13 @@ static bool process_chibi_file(const char * filename)
 					
 					if (!eat_word_v2(linePtr, name))
 					{
-						report_error("missing name");
+						report_error(line, "missing name");
 						return false;
 					}
 						
 					if (s_chibiInfo.library_exists(name))
 					{
-						report_error("library already exists");
+						report_error(line, "library already exists");
 						return false;
 					}
 					
@@ -329,13 +339,13 @@ static bool process_chibi_file(const char * filename)
 					
 					if (!eat_word_v2(linePtr, name))
 					{
-						report_error("missing name");
+						report_error(line, "missing name");
 						return false;
 					}
 					
 					if (s_chibiInfo.library_exists(name))
 					{
-						report_error("app already exists");
+						report_error(line, "app already exists");
 						return false;
 					}
 					
@@ -354,7 +364,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					if (s_currentLibrary == nullptr)
 					{
-						report_error("add_files without a target");
+						report_error(line, "add_files without a target");
 						return false;
 					}
 					else
@@ -378,7 +388,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					if (s_currentLibrary == nullptr)
 					{
-						report_error("scan_files without a target");
+						report_error(line, "scan_files without a target");
 						return false;
 					}
 					else
@@ -387,7 +397,7 @@ static bool process_chibi_file(const char * filename)
 						
 						if (!eat_word_v2(linePtr, extension))
 						{
-							report_error("missing extension");
+							report_error(line, "missing extension");
 							return false;
 						}
 						
@@ -428,7 +438,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					if (s_currentLibrary == nullptr)
 					{
-						report_error("exclude_files without a target");
+						report_error(line, "exclude_files without a target");
 						return false;
 					}
 					else
@@ -443,7 +453,7 @@ static bool process_chibi_file(const char * filename)
 							char full_path[PATH_MAX];
 							if (!concat(full_path, sizeof(full_path), chibi_path, "/", filename))
 							{
-								report_error("failed to create absolute path");
+								report_error(line, "failed to create absolute path");
 								return false;
 							}
 							
@@ -463,7 +473,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					if (s_currentLibrary == nullptr)
 					{
-						report_error("depend_package without a target");
+						report_error(line, "depend_package without a target");
 						return false;
 					}
 					else
@@ -472,7 +482,7 @@ static bool process_chibi_file(const char * filename)
 						
 						if (!eat_word_v2(linePtr, name))
 						{
-							report_error("missing name");
+							report_error(line, "missing name");
 							return false;
 						}
 						
@@ -483,7 +493,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					if (s_currentLibrary == nullptr)
 					{
-						report_error("depend_library without a target");
+						report_error(line, "depend_library without a target");
 						return false;
 					}
 					else
@@ -492,7 +502,7 @@ static bool process_chibi_file(const char * filename)
 						
 						if (!eat_word_v2(linePtr, name))
 						{
-							report_error("missing name");
+							report_error(line, "missing name");
 							return false;
 						}
 						
@@ -503,7 +513,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					if (s_currentLibrary == nullptr)
 					{
-						report_error("header_path without a target");
+						report_error(line, "header_path without a target");
 						return false;
 					}
 					else
@@ -512,7 +522,7 @@ static bool process_chibi_file(const char * filename)
 						
 						if (!eat_word_v2(linePtr, path))
 						{
-							report_error("missing path");
+							report_error(line, "missing path");
 							return false;
 						}
 						
@@ -529,7 +539,7 @@ static bool process_chibi_file(const char * filename)
 								expose = true;
 							else
 							{
-								report_error("unknown option: %s", option);
+								report_error(line, "unknown option: %s", option);
 								return false;
 							}
 						}
@@ -537,18 +547,22 @@ static bool process_chibi_file(const char * filename)
 						char full_path[PATH_MAX];
 						if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
 						{
-							report_error("failed to create absolute path");
+							report_error(line, "failed to create absolute path");
 							return false;
 						}
 						
-						s_currentLibrary->header_paths.push_back(full_path);
+						ChibiHeaderPath header_path;
+						header_path.path = full_path;
+						header_path.expose = expose;
+						
+						s_currentLibrary->header_paths.push_back(header_path);
 					}
 				}
 				else if (eat_word(linePtr, "resource_path"))
 				{
 					if (s_currentLibrary == nullptr || s_currentLibrary->isExecutable == false)
 					{
-						report_error("resource_path without a target");
+						report_error(line, "resource_path without a target");
 						return false;
 					}
 					else
@@ -557,14 +571,14 @@ static bool process_chibi_file(const char * filename)
 						
 						if (!eat_word_v2(linePtr, path))
 						{
-							report_error("missing path");
+							report_error(line, "missing path");
 							return false;
 						}
 					}
 				}
 				else
 				{
-					report_error("syntax error: %s", line);
+					report_error(line, "syntax error");
 					return false;
 				}
 			}
@@ -596,7 +610,7 @@ struct CMakeWriter
 			
 			if (library == nullptr)
 			{
-				report_error("failed to find library dependency: %s", library_dependency.c_str());
+				report_error(nullptr, "failed to find library dependency: %s", library_dependency.c_str());
 				return false;
 			}
 			else
@@ -636,11 +650,12 @@ struct CMakeWriter
 		// write CMake output
 		
 	// fixme : output path
-		FILE * f = fopen("/Users/thecat/chibi/output/CMakeLists.txt", "wt");
+		const char * output_filename = "/Users/thecat/chibi/output/CMakeLists.txt";
+		FILE * f = fopen(output_filename, "wt");
 		
 		if (f == nullptr)
 		{
-			report_error("failed to open output file");
+			report_error(nullptr, "failed to open output file: %s", output_filename);
 			return false;
 		}
 		else
@@ -674,7 +689,7 @@ struct CMakeWriter
 					char absolute_path[PATH_MAX];
 					if (!concat(absolute_path, sizeof(absolute_path), library->path.c_str(), "/", file.filename.c_str()))
 					{
-						report_error("failed to create absolute path");
+						report_error(nullptr, "failed to create absolute path");
 						return false;
 					}
 					*/
@@ -691,12 +706,14 @@ struct CMakeWriter
 				{
 					for (auto & header_path : library->header_paths)
 					{
-						const char * visibility = "PUBLIC"; // todo : visibility
+						const char * visibility = header_path.expose
+							? "PUBLIC"
+							: "PRIVATE";
 						
 						sb.AppendFormat("target_include_directories(%s %s \"%s\")\n",
 							library->name.c_str(),
 							visibility,
-							header_path.c_str());
+							header_path.path.c_str());
 					}
 					
 					sb.Append("\n");
@@ -734,7 +751,7 @@ struct CMakeWriter
 					char absolute_path[PATH_MAX];
 					if (!concat(absolute_path, sizeof(absolute_path), app->path.c_str(), "/", file.filename.c_str()))
 					{
-						report_error("failed to create absolute path");
+						report_error(nullptr, "failed to create absolute path", app->path.c_str());
 						return false;
 					}
 					
@@ -774,7 +791,7 @@ int main(int argc, const char * argv[])
 	char cwd[PATH_MAX];
 	if (getcwd(cwd, PATH_MAX) == nullptr)
 	{
-		report_error("failed to get current working directory");
+		report_error(nullptr, "failed to get current working directory");
 		return -1;
 	}
 
@@ -799,7 +816,7 @@ int main(int argc, const char * argv[])
 
 			if (term == nullptr)
 			{
-				report_error("failed to find chibi_root file");
+				report_error(nullptr, "failed to find chibi_root file");
 				return -1;
 			}
 			else
@@ -812,7 +829,7 @@ int main(int argc, const char * argv[])
 
 	if (!process_chibi_file(build_root))
 	{
-		report_error("an error occured while scanning for chibi files. abort");
+		report_error(nullptr, "an error occured while scanning for chibi files");
 		return -1;
 	}
 	
