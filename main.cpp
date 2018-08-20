@@ -197,6 +197,24 @@ static bool get_path_from_filename(const char * filename, char * path, int pathS
 struct ChibiLibraryFile
 {
 	std::string filename;
+	
+	std::string group;
+};
+
+struct ChibiLibraryDependency
+{
+	enum Type
+	{
+		kType_Undefined,
+		kType_Generated,
+		kType_Local,
+		kType_Find
+	};
+	
+	std::string name;
+	std::string path;
+	
+	Type type = kType_Undefined;
 };
 
 struct ChibiHeaderPath
@@ -225,7 +243,7 @@ struct ChibiLibrary
 	
 	std::vector<ChibiLibraryFile> files;
 	
-	std::vector<std::string> library_dependencies;
+	std::vector<ChibiLibraryDependency> library_dependencies;
 	
 	std::vector<std::string> package_dependencies;
 	
@@ -461,9 +479,16 @@ static bool process_chibi_file(const char * filename)
 							if (!eat_word_v2(linePtr, filename))
 								break;
 							
+							char full_path[PATH_MAX];
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", filename))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+							
 							ChibiLibraryFile file;
 							
-							file.filename = filename;
+							file.filename = full_path;
 							
 							s_currentLibrary->files.push_back(file);
 						}
@@ -488,9 +513,13 @@ static bool process_chibi_file(const char * filename)
 						
 						bool traverse = false;
 						
+						const char * platform = nullptr;
+						
+						const char * path = nullptr;
+						
 						std::vector<std::string> excluded_paths;
 						
-						const char * platform = nullptr;
+						const char * group = nullptr;
 						
 						for (;;)
 						{
@@ -505,6 +534,11 @@ static bool process_chibi_file(const char * filename)
 							{
 								if (!eat_word_v2(linePtr, platform))
 									report_error(line, "missing platform name");
+							}
+							else if (!strcmp(option, "path"))
+							{
+								if (!eat_word_v2(linePtr, path))
+									report_error(line, "missing path");
 							}
 							else if (!strcmp(option, "exclude_path"))
 							{
@@ -525,6 +559,11 @@ static bool process_chibi_file(const char * filename)
 								
 								excluded_paths.push_back(full_path);
 							}
+							else if (!strcmp(option, "group"))
+							{
+								if (!eat_word_v2(linePtr, group))
+									report_error(line, "missing group name");
+							}
 							else
 							{
 								report_error(line, "unknown option: %s", option);
@@ -534,7 +573,26 @@ static bool process_chibi_file(const char * filename)
 						
 						// scan files
 						
-						auto filenames = listFiles(chibi_path, traverse);
+						char search_path[PATH_MAX];
+						
+						if (path == nullptr)
+						{
+							if (!concat(search_path, sizeof(search_path), chibi_path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+						else
+						{
+							if (!concat(search_path, sizeof(search_path), chibi_path, "/", path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+						
+						auto filenames = listFiles(search_path, traverse);
 						
 						for (auto & filename : filenames)
 						{
@@ -556,6 +614,9 @@ static bool process_chibi_file(const char * filename)
 							ChibiLibraryFile file;
 							
 							file.filename = filename;
+							
+							if (group != nullptr)
+								file.group = group;
 							
 							s_currentLibrary->files.push_back(file);
 						}
@@ -627,13 +688,51 @@ static bool process_chibi_file(const char * filename)
 					{
 						const char * name;
 						
+						ChibiLibraryDependency::Type type = ChibiLibraryDependency::kType_Generated;
+						
 						if (!eat_word_v2(linePtr, name))
 						{
 							report_error(line, "missing name");
 							return false;
 						}
 						
-						s_currentLibrary->library_dependencies.push_back(name);
+						for (;;)
+						{
+							const char * option;
+							
+							if (!eat_word_v2(linePtr, option))
+								break;
+							
+							if (!strcmp(option, "local"))
+								type = ChibiLibraryDependency::kType_Local;
+							else if (!strcmp(option, "find"))
+								type = ChibiLibraryDependency::kType_Find;
+							else
+							{
+								report_error(line, "unknown option: %s", option);
+								return false;
+							}
+						}
+						
+						char full_path[PATH_MAX];
+						full_path[0] = 0;
+						
+						if (type == ChibiLibraryDependency::kType_Local)
+						{
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", name))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+						
+						ChibiLibraryDependency library_dependency;
+						
+						library_dependency.name = name;
+						library_dependency.path = full_path;
+						library_dependency.type = type;
+						
+						s_currentLibrary->library_dependencies.push_back(library_dependency);
 					}
 				}
 				else if (eat_word(linePtr, "header_path"))
@@ -822,21 +921,37 @@ struct CMakeWriter
 		
 		// recurse library dependencies
 		
-		for (std::string & library_dependency : library.library_dependencies)
+		for (auto & library_dependency : library.library_dependencies)
 		{
-			if (traversed_libraries.count(library_dependency) != 0)
+			if (traversed_libraries.count(library_dependency.name) != 0)
 				continue;
 			
-			ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.c_str());
-			
-			if (library == nullptr)
+			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 			{
-				report_error(nullptr, "failed to find library dependency: %s", library_dependency.c_str());
-				return false;
+				ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.name.c_str());
+				
+				if (library == nullptr)
+				{
+					report_error(nullptr, "failed to find library dependency: %s", library_dependency.name.c_str());
+					return false;
+				}
+				else
+				{
+					handle_library(*library, traversed_libraries, libraries);
+				}
+			}
+			else if (library_dependency.type == ChibiLibraryDependency::kType_Local)
+			{
+				// nothing to do here
+			}
+			else if (library_dependency.type == ChibiLibraryDependency::kType_Find)
+			{
+				// nothing to do here
 			}
 			else
 			{
-				handle_library(*library, traversed_libraries, libraries);
+				report_error(nullptr, "internal error: unknown library dependency type");
+				return false;
 			}
 		}
 		
@@ -956,6 +1071,15 @@ struct CMakeWriter
 			}
 		}
 		
+		for (auto & library : s_chibiInfo.libraries)
+		{
+			if (traversed_libraries.count(library->name) != 0)
+				continue;
+			
+			if (handle_library(*library, traversed_libraries, libraries) == false)
+				return false;
+		}
+		
 		// write CMake output
 		
 	// fixme : output path
@@ -995,17 +1119,7 @@ struct CMakeWriter
 				
 				for (auto & file : library->files)
 				{
-					/*
-					char absolute_path[PATH_MAX];
-					if (!concat(absolute_path, sizeof(absolute_path), library->path.c_str(), "/", file.filename.c_str()))
-					{
-						report_error(nullptr, "failed to create absolute path");
-						return false;
-					}
-					*/
-					
 					sb.Append("\n\t");
-					//sb.AppendFormat("\"%s\"", absolute_path);
 					sb.AppendFormat("\"%s\"", file.filename.c_str());
 				}
 				
@@ -1022,9 +1136,40 @@ struct CMakeWriter
 				{
 					for (auto & library_dependency : library->library_dependencies)
 					{
-						sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
-							library->name.c_str(),
-							library_dependency.c_str());
+						if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+						{
+							sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
+								library->name.c_str(),
+								library_dependency.name.c_str());
+						}
+						else if (library_dependency.type == ChibiLibraryDependency::kType_Local)
+						{
+							sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
+								library->name.c_str(),
+								library_dependency.path.c_str());
+						}
+						else if (library_dependency.type == ChibiLibraryDependency::kType_Find)
+						{
+							char var_name[256];
+							
+							if (!concat(var_name, sizeof(var_name), library->name.c_str(), "_", library_dependency.name.c_str()))
+							{
+								report_error(nullptr, "failed to construct variable name for 'find' library dependency");
+								return false;
+								
+							}
+							
+							sb.AppendFormat("find_library(%s %s)\n", var_name, library_dependency.name.c_str());
+							
+							sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s})\n",
+								library->name.c_str(),
+								var_name);
+						}
+						else
+						{
+							report_error(nullptr, "internal error: unknown library dependency type");
+							return false;
+						}
 					}
 					
 					sb.Append("\n");
@@ -1048,15 +1193,8 @@ struct CMakeWriter
 				
 				for (auto & file : app->files)
 				{
-					char absolute_path[PATH_MAX];
-					if (!concat(absolute_path, sizeof(absolute_path), app->path.c_str(), "/", file.filename.c_str()))
-					{
-						report_error(nullptr, "failed to create absolute path", app->path.c_str());
-						return false;
-					}
-					
 					sb.Append("\n\t");
-					sb.Append(absolute_path);
+					sb.AppendFormat("\"%s\"", file.filename.c_str());
 				}
 				
 				sb.Append(")\n");
@@ -1074,7 +1212,7 @@ struct CMakeWriter
 					{
 						sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
 							app->name.c_str(),
-							library_dependency.c_str());
+							library_dependency.name.c_str());
 					}
 					
 					sb.Append("\n");
@@ -1082,6 +1220,34 @@ struct CMakeWriter
 				
 				if (!output(f, sb))
 					return false;
+			}
+			
+			for (auto & library : libraries)
+			{
+				bool empty = true;
+				
+				StringBuilder<STRING_BUFFER_SIZE> sb;
+				
+				sb.Append("# --- source group memberships ---\n");
+				sb.Append("\n");
+				
+				for (auto & file : library->files)
+				{
+					if (file.group.empty())
+						continue;
+					
+					sb.AppendFormat("source_group(\"%s\" FILES %s)\n", file.group.c_str(), file.filename.c_str());
+					
+					empty = false;
+				}
+				
+				sb.Append("\n");
+				
+				if (empty == false)
+				{
+					if (!output(f, sb))
+						return false;
+				}
 			}
 			
 			fclose(f);
