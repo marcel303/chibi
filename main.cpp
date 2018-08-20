@@ -51,7 +51,7 @@ static bool is_comment_or_whitespace(const char * line)
 	return true;
 }
 
-static bool eat_word_v2(char *& line, char *& word)
+static bool eat_word_v2(char *& line, const char *& word)
 {
 	while (*line != 0 && is_whitespace(*line) == true)
 		line++;
@@ -331,7 +331,7 @@ static bool process_chibi_file(const char * filename)
 				
 				if (eat_word(linePtr, "with_platform"))
 				{
-					char * platform;
+					const char * platform;
 					
 					if (!eat_word_v2(linePtr, platform))
 					{
@@ -347,7 +347,7 @@ static bool process_chibi_file(const char * filename)
 				
 				if (eat_word(linePtr, "add"))
 				{
-					char * location;
+					const char * location;
 					
 					if (!eat_word_v2(linePtr, location))
 					{
@@ -369,7 +369,7 @@ static bool process_chibi_file(const char * filename)
 				}
 				else if (eat_word(linePtr, "add_root"))
 				{
-					char * location;
+					const char * location;
 					
 					if (!eat_word_v2(linePtr, location))
 					{
@@ -393,7 +393,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					s_currentLibrary = nullptr;
 					
-					char * name;
+					const char * name;
 					
 					if (!eat_word_v2(linePtr, name))
 					{
@@ -420,7 +420,7 @@ static bool process_chibi_file(const char * filename)
 				{
 					s_currentLibrary = nullptr;
 					
-					char * name;
+					const char * name;
 					
 					if (!eat_word_v2(linePtr, name))
 					{
@@ -456,7 +456,7 @@ static bool process_chibi_file(const char * filename)
 					{
 						for (;;)
 						{
-							char * filename;
+							const char * filename;
 							
 							if (!eat_word_v2(linePtr, filename))
 								break;
@@ -478,7 +478,7 @@ static bool process_chibi_file(const char * filename)
 					}
 					else
 					{
-						char * extension;
+						const char * extension;
 						
 						if (!eat_word_v2(linePtr, extension))
 						{
@@ -490,11 +490,11 @@ static bool process_chibi_file(const char * filename)
 						
 						std::vector<std::string> excluded_paths;
 						
-						char * platform = nullptr;
+						const char * platform = nullptr;
 						
 						for (;;)
 						{
-							char * option;
+							const char * option;
 							
 							if (eat_word_v2(linePtr, option) == false)
 								break;
@@ -508,7 +508,7 @@ static bool process_chibi_file(const char * filename)
 							}
 							else if (!strcmp(option, "exclude_path"))
 							{
-								char * excluded_path;
+								const char * excluded_path;
 								
 								if (!eat_word_v2(linePtr, excluded_path))
 								{
@@ -572,7 +572,7 @@ static bool process_chibi_file(const char * filename)
 					{
 						for (;;)
 						{
-							char * filename;
+							const char * filename;
 							
 							if (!eat_word_v2(linePtr, filename))
 								break;
@@ -605,7 +605,7 @@ static bool process_chibi_file(const char * filename)
 					}
 					else
 					{
-						char * name;
+						const char * name;
 						
 						if (!eat_word_v2(linePtr, name))
 						{
@@ -625,7 +625,7 @@ static bool process_chibi_file(const char * filename)
 					}
 					else
 					{
-						char * name;
+						const char * name;
 						
 						if (!eat_word_v2(linePtr, name))
 						{
@@ -645,7 +645,7 @@ static bool process_chibi_file(const char * filename)
 					}
 					else
 					{
-						char * path;
+						const char * path;
 						
 						if (!eat_word_v2(linePtr, path))
 						{
@@ -655,11 +655,11 @@ static bool process_chibi_file(const char * filename)
 						
 						bool expose = false;
 						
-						char * platform = nullptr;
+						const char * platform = nullptr;
 						
 						for (;;)
 						{
-							char * option;
+							const char * option;
 							
 							if (!eat_word_v2(linePtr, option))
 								break;
@@ -704,8 +704,8 @@ static bool process_chibi_file(const char * filename)
 					}
 					else
 					{
-						char * name;
-						char * value;
+						const char * name;
+						const char * value;
 						
 						if (!eat_word_v2(linePtr, name))
 						{
@@ -724,11 +724,11 @@ static bool process_chibi_file(const char * filename)
 						
 						bool expose = false;
 						
-						char * toolchain = "";
+						const char * toolchain = "";
 						
 						for (;;)
 						{
-							char * option;
+							const char * option;
 							
 							if (!eat_word_v2(linePtr, option))
 								break;
@@ -769,7 +769,7 @@ static bool process_chibi_file(const char * filename)
 					}
 					else
 					{
-						char * path;
+						const char * path;
 						
 						if (!eat_word_v2(linePtr, path))
 						{
