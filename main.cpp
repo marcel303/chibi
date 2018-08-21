@@ -1,21 +1,14 @@
-#include "Debugging.h"
 #include "filesystem.h"
-#include "Path.h"
-#include "StringBuilder.h"
-#include "StringEx.h"
 
 #include <limits.h>
-#include <unistd.h>
 #include <set>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 // todo : redesign the embed_framework option
 
-#define STRING_BUFFER_SIZE (1 << 16)
-
-#define strcpy_s(d, l, s) strcpy(d, s)
-#define strcat_s(d, l, s) strcat(d, s)
+#define STRING_BUFFER_SIZE (1 << 12)
 
 static ssize_t s_current_line_length = 0;
 
@@ -127,13 +120,18 @@ static bool do_concat(char *& dst, int & dstSize, const char * s)
 	return true;
 }
 
-static bool concat(char * dst, int dstSize, const char * s1, const char * s2 = nullptr, const char * s3 = nullptr, const char * s4 = nullptr)
+/*public*/ bool concat(char * dst, int dstSize, const char * s1, const char * s2 = nullptr, const char * s3 = nullptr, const char * s4 = nullptr)
 {
 	return
 		do_concat(dst, dstSize, s1) &&
 		(s2 == nullptr || do_concat(dst, dstSize, s2)) &&
 		(s3 == nullptr || do_concat(dst, dstSize, s3)) &&
 		(s4 == nullptr || do_concat(dst, dstSize, s4));
+}
+
+static bool copy_string(char * dst, int dstSize, const char * s)
+{
+	return concat(dst, dstSize, s);
 }
 
 static void report_error(const char * line, const char * format, ...)
@@ -193,6 +191,41 @@ static bool get_path_from_filename(const char * filename, char * path, int pathS
 
 	*term = 0;
 	
+	return true;
+}
+
+static std::string get_path_extension(const std::string & path, const bool to_lower)
+{
+	size_t pos = path.find_last_of('.');
+	
+	if (pos == std::string::npos)
+		return std::string();
+	else
+		pos++;
+	
+	std::string extension = path.substr(pos);
+	
+	if (to_lower)
+	{
+		for (auto & c : extension)
+			c = tolower(c);
+	}
+	
+	return extension;
+}
+
+static bool string_starts_with(const std::string & text, const std::string & substring)
+{
+	const size_t length1 = text.length();
+	const size_t length2 = substring.length();
+
+	if (length1 < length2)
+		return false;
+
+	for (size_t i = 0; i < length2; ++i)
+		if (text[i] != substring[i])
+			return false;
+
 	return true;
 }
 
@@ -648,14 +681,14 @@ static bool process_chibi_file(const char * filename)
 						
 						auto end = std::remove_if(filenames.begin(), filenames.end(), [&](const std::string & filename) -> bool
 							{
-								if (Path::GetExtension(filename, true) != extension)
+								if (get_path_extension(filename, true) != extension)
 									return true;
 							
 								if (platform != nullptr && platform != s_platform)
 									return true;
 								
 								for (auto & excluded_path : excluded_paths)
-									if (String::StartsWith(filename, excluded_path))
+									if (string_starts_with(filename, excluded_path))
 										return true;
 								
 								return false;
@@ -1094,6 +1127,32 @@ static const char * translate_toolchain_to_cmake(const std::string & name)
 	return nullptr;
 }
 
+struct StringBuilder
+{
+	std::string text;
+	
+	StringBuilder()
+	{
+		text.reserve(1 << 16);
+	}
+	
+	void Append(const char * text)
+	{
+		this->text.append(text);
+	}
+	
+	void AppendFormat(const char * format, ...)
+	{
+		va_list va;
+		va_start(va, format);
+		char text[STRING_BUFFER_SIZE];
+		vsprintf(text, format, va);
+		va_end(va);
+
+		Append(text);
+	}
+};
+
 struct CMakeWriter
 {
 	bool handle_library(ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
@@ -1303,13 +1362,7 @@ struct CMakeWriter
 	template <typename S>
 	static bool output(FILE * f, S & sb)
 	{
-		if (!sb.IsValid())
-		{
-			report_error(nullptr, "output buffer overflow");
-			return false;
-		}
-		
-		if (fprintf(f, "%s", sb.ToString()) < 0)
+		if (fprintf(f, "%s", sb.text.c_str()) < 0)
 		{
 			report_error(nullptr, "failed to write to disk");
 			return false;
@@ -1355,7 +1408,7 @@ struct CMakeWriter
 		for (auto & library : libraries)
 		{
 			std::sort(library->files.begin(), library->files.end(),
-				[](auto & a, auto & b)
+				[](const ChibiLibraryFile & a, const ChibiLibraryFile & b)
 				{
 					return a.filename < b.filename;
 				});
@@ -1375,7 +1428,7 @@ struct CMakeWriter
 		else
 		{
 			{
-				StringBuilder<STRING_BUFFER_SIZE> sb;
+				StringBuilder sb;
 				
 				sb.Append("cmake_minimum_required(VERSION 2.6)\n");
 				sb.Append("\n");
@@ -1398,7 +1451,7 @@ struct CMakeWriter
 				if (library->isExecutable)
 					continue;
 				
-				StringBuilder<STRING_BUFFER_SIZE> sb;
+				StringBuilder sb;
 				
 				sb.AppendFormat("# --- library %s ---\n", library->name.c_str());
 				sb.Append("\n");
@@ -1460,7 +1513,7 @@ struct CMakeWriter
 				if (app->isExecutable == false)
 					continue;
 				
-				StringBuilder<STRING_BUFFER_SIZE> sb;
+				StringBuilder sb;
 				
 				sb.AppendFormat("# --- app %s ---\n", app->name.c_str());
 				sb.Append("\n");
@@ -1504,7 +1557,7 @@ struct CMakeWriter
 			{
 				bool empty = true;
 				
-				StringBuilder<STRING_BUFFER_SIZE> sb;
+				StringBuilder sb;
 				
 				sb.Append("# --- source group memberships ---\n");
 				sb.Append("\n");
@@ -1514,7 +1567,7 @@ struct CMakeWriter
 					if (file.group.empty())
 						continue;
 					
-					sb.AppendFormat("source_group(\"%s\" FILES %s)\n", file.group.c_str(), file.filename.c_str());
+					sb.AppendFormat("source_group(\"%s\" FILES \"%s\")\n", file.group.c_str(), file.filename.c_str());
 					
 					empty = false;
 				}
@@ -1603,7 +1656,11 @@ int main(int argc, const char * argv[])
 	// recursively find build_root
 
 	char current_path[PATH_MAX];
-	strcpy_s(current_path, sizeof(current_path), cwd);
+	if (!copy_string(current_path, sizeof(current_path), cwd))
+	{
+		report_error(nullptr, "failed to copy current path");
+		return -1;
+	}
 
 	char build_root[PATH_MAX];
 	memset(build_root, 0, sizeof(build_root));
@@ -1611,12 +1668,19 @@ int main(int argc, const char * argv[])
 	for (;;)
 	{
 		char root_path[PATH_MAX];
-		strcpy_s(root_path, sizeof(root_path), current_path);
-		strcat_s(root_path, sizeof(root_path), "/chibi_root");
+		if (!concat(root_path, sizeof(root_path), current_path, "/chibi_root"))
+		{
+			report_error(nullptr, "failed to create absolute path");
+			return -1;
+		}
 
 		if (file_exist(root_path))
 		{
-			strcpy_s(build_root, sizeof(build_root), root_path);
+			if (!copy_string(build_root, sizeof(build_root), root_path))
+			{
+				report_error(nullptr, "failed to copy path");
+				return -1;
+			}
 		}
 		
 		char * term = strrchr(current_path, '/');
@@ -1632,9 +1696,6 @@ int main(int argc, const char * argv[])
 		report_error(nullptr, "failed to find chibi_root file");
 		return -1;
 	}
-
-	// build_root should be valid here
-	Assert(file_exist(build_root));
 
 	if (!process_chibi_file(build_root))
 	{

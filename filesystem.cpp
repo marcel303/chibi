@@ -1,11 +1,12 @@
 #include "filesystem.h"
-#include "StringEx.h"
 
 #ifdef WIN32
 	#include <Windows.h>
 #else
 	#include <dirent.h>
 #endif
+
+bool concat(char * dst, int dstSize, const char * s1, const char * s2 = nullptr, const char * s3 = nullptr, const char * s4 = nullptr);
 
 std::vector<std::string> listFiles(const char * path, bool recurse)
 {
@@ -21,9 +22,9 @@ std::vector<std::string> listFiles(const char * path, bool recurse)
 		{
 			char fullPath[MAX_PATH];
 			if (strcmp(path, "."))
-				sprintf_s(fullPath, sizeof(fullPath), "%s/%s", path, ffd.cFileName);
+				concat(fullPath, sizeof(fullPath), path, "/", ffd.cFileName);
 			else
-				strcpy_s(fullPath, sizeof(fullPath), ffd.cFileName);
+				concat(fullPath, sizeof(fullPath), ffd.cFileName);
 
 			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 			{
@@ -63,9 +64,9 @@ std::vector<std::string> listFiles(const char * path, bool recurse)
 		{
 			char fullPath[PATH_MAX];
 			if (strcmp(path, "."))
-				sprintf_s(fullPath, sizeof(fullPath), "%s/%s", path, ent->d_name);
+				concat(fullPath, sizeof(fullPath), path, "/", ent->d_name);
 			else
-				strcpy_s(fullPath, sizeof(fullPath), ent->d_name);
+				concat(fullPath, sizeof(fullPath), ent->d_name);
 			
 			if (ent->d_type == DT_DIR)
 			{
