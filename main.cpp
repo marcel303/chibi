@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+// todo : redesign the embed_framework option
+
 #define STRING_BUFFER_SIZE (1 << 14)
 
 #define strcpy_s(d, l, s) strcpy(d, s)
@@ -215,6 +217,8 @@ struct ChibiLibraryDependency
 	std::string path;
 	
 	Type type = kType_Undefined;
+	
+	bool embed_framework = false;
 };
 
 struct ChibiHeaderPath
@@ -843,6 +847,8 @@ static bool process_chibi_file(const char * filename)
 						
 						ChibiLibraryDependency::Type type = ChibiLibraryDependency::kType_Generated;
 						
+						bool embed_framework = false;
+						
 						if (!eat_word_v2(linePtr, name))
 						{
 							report_error(line, "missing name");
@@ -860,6 +866,8 @@ static bool process_chibi_file(const char * filename)
 								type = ChibiLibraryDependency::kType_Local;
 							else if (!strcmp(option, "find"))
 								type = ChibiLibraryDependency::kType_Find;
+							else if (!strcmp(option, "embed_framework"))
+								embed_framework = true;
 							else
 							{
 								report_error(line, "unknown option: %s", option);
@@ -884,6 +892,7 @@ static bool process_chibi_file(const char * filename)
 						library_dependency.name = name;
 						library_dependency.path = full_path;
 						library_dependency.type = type;
+						library_dependency.embed_framework = embed_framework;
 						
 						s_currentLibrary->library_dependencies.push_back(library_dependency);
 					}
@@ -1105,7 +1114,8 @@ struct CMakeWriter
 				}
 				else
 				{
-					handle_library(*library, traversed_libraries, libraries);
+					if (handle_library(*library, traversed_libraries, libraries) == false)
+						return false;
 				}
 			}
 			else if (library_dependency.type == ChibiLibraryDependency::kType_Local)
@@ -1238,6 +1248,13 @@ struct CMakeWriter
 				{
 					report_error(nullptr, "internal error: unknown library dependency type");
 					return false;
+				}
+				
+				if (library_dependency.embed_framework)
+				{
+				// fixme : this is just plain ugly
+					sb.AppendFormat("file(COPY \"%s\" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", library_dependency.path.c_str());
+					sb.AppendFormat("file(COPY \"%s\" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", library_dependency.path.c_str());
 				}
 			}
 			
