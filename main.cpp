@@ -308,6 +308,8 @@ static ChibiLibrary * s_currentLibrary = nullptr;
 
 static std::string s_platform;
 
+static std::vector<std::string> s_cmake_module_paths;
+
 static bool process_chibi_file(const char * filename)
 {
 	char chibi_path[PATH_MAX];
@@ -464,6 +466,25 @@ static bool process_chibi_file(const char * filename)
 					s_chibiInfo.libraries.push_back(library);
 					
 					s_currentLibrary = library;
+				}
+				else if (eat_word(linePtr, "cmake_module_path"))
+				{
+					const char * path;
+					
+					if (!eat_word_v2(linePtr, path))
+					{
+						report_error(line, "cmake_module_path without path");
+						return false;
+					}
+					
+					char full_path[PATH_MAX];
+					if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
+					{
+						report_error(line, "failed to create absolute path");
+						return false;
+					}
+					
+					s_cmake_module_paths.push_back(full_path);
 				}
 				else if (eat_word(linePtr, "add_files"))
 				{
@@ -1045,6 +1066,82 @@ struct CMakeWriter
 	}
 	
 	template <typename S>
+	static bool write_library_dependencies(S & sb, const ChibiLibrary & library)
+	{
+		if (!library.library_dependencies.empty())
+		{
+			for (auto & library_dependency : library.library_dependencies)
+			{
+				if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+				{
+					sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
+						library.name.c_str(),
+						library_dependency.name.c_str());
+				}
+				else if (library_dependency.type == ChibiLibraryDependency::kType_Local)
+				{
+					sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
+						library.name.c_str(),
+						library_dependency.path.c_str());
+				}
+				else if (library_dependency.type == ChibiLibraryDependency::kType_Find)
+				{
+					char var_name[256];
+					
+					if (!concat(var_name, sizeof(var_name), library.name.c_str(), "_", library_dependency.name.c_str()))
+					{
+						report_error(nullptr, "failed to construct variable name for 'find' library dependency");
+						return false;
+						
+					}
+					
+					sb.AppendFormat("find_library(%s %s)\n", var_name, library_dependency.name.c_str());
+					
+					sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s})\n",
+						library.name.c_str(),
+						var_name);
+				}
+				else
+				{
+					report_error(nullptr, "internal error: unknown library dependency type");
+					return false;
+				}
+			}
+			
+			sb.Append("\n");
+		}
+		
+		return true;
+	}
+	
+	template <typename S>
+	static bool write_package_dependencies(S & sb, const ChibiLibrary & library)
+	{
+		if (!library.package_dependencies.empty())
+		{
+			for (auto & package_dependency : library.package_dependencies)
+			{
+				sb.Append("find_package(PkgConfig)\n");
+				
+				sb.AppendFormat("find_package(%s REQUIRED)\n", package_dependency.c_str());
+				
+				sb.AppendFormat("target_include_directories(%s PRIVATE %s \"${%s_INCLUDE_DIRS}\")\n",
+					library.name.c_str(),
+					library.path.c_str(),
+					package_dependency.c_str());
+				
+				sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
+					library.name.c_str(),
+					package_dependency.c_str());
+			}
+			
+			sb.Append("\n");
+		}
+		
+		return true;
+	}
+	
+	template <typename S>
 	static bool output(FILE * f, S & sb)
 	{
 		if (!sb.IsValid())
@@ -1094,6 +1191,17 @@ struct CMakeWriter
 				return false;
 		}
 		
+		// sort files by name
+		
+		for (auto & library : libraries)
+		{
+			std::sort(library->files.begin(), library->files.end(),
+				[](auto & a, auto & b)
+				{
+					return a.filename < b.filename;
+				});
+		}
+		
 		// write CMake output
 		
 	// fixme : output path
@@ -1114,6 +1222,13 @@ struct CMakeWriter
 				sb.Append("\n");
 				sb.Append("set(CMAKE_CXX_STANDARD 14)\n");
 				sb.Append("\n");
+				
+				if (!s_cmake_module_paths.empty())
+				{
+					for (auto & cmake_module_path : s_cmake_module_paths)
+						sb.AppendFormat("list(APPEND CMAKE_MODULE_PATH \"%s\")\n", cmake_module_path.c_str());
+					sb.Append("\n");
+				}
 				
 				if (!output(f, sb))
 					return false;
@@ -1146,48 +1261,11 @@ struct CMakeWriter
 				if (!write_compile_definitions(sb, *library))
 					return false;
 				
-				if (!library->library_dependencies.empty())
-				{
-					for (auto & library_dependency : library->library_dependencies)
-					{
-						if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
-						{
-							sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
-								library->name.c_str(),
-								library_dependency.name.c_str());
-						}
-						else if (library_dependency.type == ChibiLibraryDependency::kType_Local)
-						{
-							sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
-								library->name.c_str(),
-								library_dependency.path.c_str());
-						}
-						else if (library_dependency.type == ChibiLibraryDependency::kType_Find)
-						{
-							char var_name[256];
-							
-							if (!concat(var_name, sizeof(var_name), library->name.c_str(), "_", library_dependency.name.c_str()))
-							{
-								report_error(nullptr, "failed to construct variable name for 'find' library dependency");
-								return false;
-								
-							}
-							
-							sb.AppendFormat("find_library(%s %s)\n", var_name, library_dependency.name.c_str());
-							
-							sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s})\n",
-								library->name.c_str(),
-								var_name);
-						}
-						else
-						{
-							report_error(nullptr, "internal error: unknown library dependency type");
-							return false;
-						}
-					}
-					
-					sb.Append("\n");
-				}
+				if (!write_library_dependencies(sb, *library))
+					return false;
+				
+				if (!write_package_dependencies(sb, *library))
+					return false;
 				
 				if (!output(f, sb))
 					return false;
@@ -1228,17 +1306,11 @@ struct CMakeWriter
 				if (!write_compile_definitions(sb, *app))
 					return false;
 				
-				if (!app->library_dependencies.empty())
-				{
-					for (auto & library_dependency : app->library_dependencies)
-					{
-						sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
-							app->name.c_str(),
-							library_dependency.name.c_str());
-					}
-					
-					sb.Append("\n");
-				}
+				if (!write_library_dependencies(sb, *app))
+					return false;
+				
+				if (!write_package_dependencies(sb, *app))
+					return false;
 				
 				if (!output(f, sb))
 					return false;

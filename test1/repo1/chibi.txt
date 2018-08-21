@@ -17,5 +17,3 @@ library repo1
 	with_platform macos   compile_definition MACOS   *
 	with_platform linux   compile_definition LINUX   *
 	with_platform windows compile_definition WINDOWS *
-
-	depend_package opengl
