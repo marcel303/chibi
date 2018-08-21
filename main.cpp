@@ -251,6 +251,8 @@ struct ChibiLibrary
 	
 	std::vector<ChibiCompileDefinition> compile_definitions;
 	
+	std::string resource_path;
+	
 	void dump_info() const
 	{
 		printf("library: %s\n", name.c_str());
@@ -875,6 +877,15 @@ static bool process_chibi_file(const char * filename)
 							report_error(line, "missing path");
 							return false;
 						}
+						
+						char full_path[PATH_MAX];
+						if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
+						{
+							report_error(line, "failed to create absolute path");
+							return false;
+						}
+						
+						s_currentLibrary->resource_path = full_path;
 					}
 				}
 				else
@@ -915,7 +926,10 @@ struct CMakeWriter
 {
 	bool handle_library(ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
 	{
-		printf("handle_library: %s\n", library.name.c_str());
+		if (library.isExecutable)
+			printf("handle_app: %s\n", library.name.c_str());
+		else
+			printf("handle_library: %s\n", library.name.c_str());
 		
 		traversed_libraries.insert(library.name);
 		
@@ -1199,6 +1213,14 @@ struct CMakeWriter
 				
 				sb.Append(")\n");
 				sb.Append("\n");
+				
+				if (!app->resource_path.empty())
+				{
+					sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\"%s\")\n",
+						app->name.c_str(),
+						app->resource_path.c_str());
+					sb.Append("\n");
+				}
 				
 				if (!write_header_paths(sb, *app))
 					return false;
