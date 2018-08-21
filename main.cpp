@@ -12,7 +12,7 @@
 
 // todo : redesign the embed_framework option
 
-#define STRING_BUFFER_SIZE (1 << 14)
+#define STRING_BUFFER_SIZE (1 << 16)
 
 #define strcpy_s(d, l, s) strcpy(d, s)
 #define strcat_s(d, l, s) strcat(d, s)
@@ -201,6 +201,8 @@ struct ChibiLibraryFile
 	std::string filename;
 	
 	std::string group;
+	
+	bool compile = true;
 };
 
 struct ChibiLibraryDependency
@@ -661,6 +663,20 @@ static bool process_chibi_file(const char * filename)
 						
 						filenames.erase(end, filenames.end());
 						
+						std::vector<ChibiLibraryFile> library_files;
+						
+						for (auto & filename : filenames)
+						{
+							ChibiLibraryFile file;
+							
+							file.filename = filename;
+							
+							if (group != nullptr)
+								file.group = group;
+							
+							library_files.push_back(file);
+						}
+						
 						if (merge_into != nullptr)
 						{
 							char full_path[PATH_MAX];
@@ -679,13 +695,15 @@ static bool process_chibi_file(const char * filename)
 							}
 							else
 							{
-								for (auto & filename : filenames)
+								for (auto & library_file : library_files)
 								{
-									FILE * source_file = fopen(filename.c_str(), "rt");
+									library_file.compile = false;
+									
+									FILE * source_file = fopen(library_file.filename.c_str(), "rt");
 									
 									if (source_file == nullptr)
 									{
-										report_error(line, "failed to open  file: %s", filename.c_str());
+										report_error(line, "failed to open  file: %s", library_file.filename.c_str());
 										return false;
 									}
 									
@@ -713,9 +731,14 @@ static bool process_chibi_file(const char * filename)
 								target_file = nullptr;
 							}
 							
-							filenames.clear();
+							ChibiLibraryFile file;
 							
-							filenames.push_back(full_path);
+							file.filename = full_path;
+							
+							if (group != nullptr)
+								file.group = group;
+							
+							library_files.push_back(file);
 						}
 						
 						if (conglomerate != nullptr)
@@ -738,45 +761,31 @@ static bool process_chibi_file(const char * filename)
 							{
 								fprintf(target_file, "// auto-generated. do not hand-edit\n\n");
 								
-								for (auto & filename : filenames)
+								for (auto & library_file : library_files)
 								{
-									fprintf(target_file, "#include \"%s\"\n", filename.c_str());
+									library_file.compile = false;
+									
+									fprintf(target_file, "#include \"%s\"\n", library_file.filename.c_str());
 								}
 								
 								fclose(target_file);
 								target_file = nullptr;
 							}
 							
-							filenames.clear();
-							
-							filenames.push_back(full_path);
-						}
-						
-						for (auto & filename : filenames)
-						{
-						#if 1
-							bool isExcluded = false;
-							
-							for (auto & excluded_path : excluded_paths)
-								if (String::StartsWith(filename, excluded_path))
-									isExcluded = true;
-							
-							if (isExcluded)
-							{
-								report_error(line, "???");
-								return false;
-							}
-						#endif
-							
 							ChibiLibraryFile file;
 							
-							file.filename = filename;
+							file.filename = full_path;
 							
 							if (group != nullptr)
 								file.group = group;
 							
-							s_currentLibrary->files.push_back(file);
+							library_files.push_back(file);
 						}
+						
+						s_currentLibrary->files.insert(
+							s_currentLibrary->files.end(),
+							library_files.begin(),
+							library_files.end());
 					}
 				}
 				else if (eat_word(linePtr, "exclude_files"))
@@ -1393,6 +1402,9 @@ struct CMakeWriter
 				
 				sb.AppendFormat("# --- library %s ---\n", library->name.c_str());
 				sb.Append("\n");
+				
+				bool has_compile_disabled_files = false;
+				
 				sb.Append("add_library(");
 				sb.Append(library->name.c_str());
 				
@@ -1400,10 +1412,32 @@ struct CMakeWriter
 				{
 					sb.Append("\n\t");
 					sb.AppendFormat("\"%s\"", file.filename.c_str());
+					
+					if (file.compile == false)
+						has_compile_disabled_files = true;
 				}
 				
 				sb.Append(")\n");
 				sb.Append("\n");
+				
+				if (has_compile_disabled_files)
+				{
+					sb.Append("set_source_files_properties(");
+					
+					for (auto & file : library->files)
+					{
+						if (file.compile == false)
+						{
+							sb.Append("\n\t");
+							sb.AppendFormat("\"%s\"", file.filename.c_str());
+						}
+					}
+					
+					sb.Append("\n\tPROPERTIES HEADER_FILE_ONLY 1");
+					
+					sb.Append(")\n");
+					sb.Append("\n");
+				}
 				
 				if (!write_header_paths(sb, *library))
 					return false;
