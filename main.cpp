@@ -544,6 +544,10 @@ static bool process_chibi_file(const char * filename)
 						
 						const char * group = nullptr;
 						
+						const char * merge_into = nullptr;
+						
+						const char * conglomerate = nullptr;
+						
 						for (;;)
 						{
 							const char * option;
@@ -585,7 +589,26 @@ static bool process_chibi_file(const char * filename)
 							else if (!strcmp(option, "group"))
 							{
 								if (!eat_word_v2(linePtr, group))
+								{
 									report_error(line, "missing group name");
+									return false;
+								}
+							}
+							else if (!strcmp(option, "merge_into"))
+							{
+								if (!eat_word_v2(linePtr, merge_into))
+								{
+									report_error(line, "missing merge_into name");
+									return false;
+								}
+							}
+							else if (!strcmp(option, "conglomerate"))
+							{
+								if (!eat_word_v2(linePtr, conglomerate))
+								{
+									report_error(line, "missing conglomerate target");
+									return false;
+								}
 							}
 							else
 							{
@@ -617,14 +640,117 @@ static bool process_chibi_file(const char * filename)
 						
 						auto filenames = listFiles(search_path, traverse);
 						
+						auto end = std::remove_if(filenames.begin(), filenames.end(), [&](const std::string & filename) -> bool
+							{
+								if (Path::GetExtension(filename, true) != extension)
+									return true;
+							
+								if (platform != nullptr && platform != s_platform)
+									return true;
+								
+								for (auto & excluded_path : excluded_paths)
+									if (String::StartsWith(filename, excluded_path))
+										return true;
+								
+								return false;
+							});
+						
+						filenames.erase(end, filenames.end());
+						
+						if (merge_into != nullptr)
+						{
+							char full_path[PATH_MAX];
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", merge_into))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+							
+							FILE * target_file = fopen(full_path, "wt");
+							
+							if (target_file == nullptr)
+							{
+								report_error(line, "failed to open merge_into target");
+								return false;
+							}
+							else
+							{
+								for (auto & filename : filenames)
+								{
+									FILE * source_file = fopen(filename.c_str(), "rt");
+									
+									if (source_file == nullptr)
+									{
+										report_error(line, "failed to open  file: %s", filename.c_str());
+										return false;
+									}
+									
+									char * source_line = nullptr;
+									size_t source_lineSize = 0;
+									
+									for (;;)
+									{
+										auto s = getline(&source_line, &source_lineSize, source_file);
+										
+										if (s < 0)
+											break;
+										
+										fprintf(target_file, "%s", source_line);
+									}
+									
+									free(source_line);
+									source_line = nullptr;
+									
+									fclose(source_file);
+									source_file = nullptr;
+								}
+								
+								fclose(target_file);
+								target_file = nullptr;
+							}
+							
+							filenames.clear();
+							
+							filenames.push_back(full_path);
+						}
+						
+						if (conglomerate != nullptr)
+						{
+							char full_path[PATH_MAX];
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", conglomerate))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+							
+							FILE * target_file = fopen(full_path, "wt");
+							
+							if (target_file == nullptr)
+							{
+								report_error(line, "failed to open conglomerate target");
+								return false;
+							}
+							else
+							{
+								fprintf(target_file, "// auto-generated. do not hand-edit\n\n");
+								
+								for (auto & filename : filenames)
+								{
+									fprintf(target_file, "#include \"%s\"\n", filename.c_str());
+								}
+								
+								fclose(target_file);
+								target_file = nullptr;
+							}
+							
+							filenames.clear();
+							
+							filenames.push_back(full_path);
+						}
+						
 						for (auto & filename : filenames)
 						{
-							if (Path::GetExtension(filename, true) != extension)
-								continue;
-							
-							if (platform != nullptr && platform != s_platform)
-								continue;
-							
+						#if 1
 							bool isExcluded = false;
 							
 							for (auto & excluded_path : excluded_paths)
@@ -632,7 +758,11 @@ static bool process_chibi_file(const char * filename)
 									isExcluded = true;
 							
 							if (isExcluded)
-								continue;
+							{
+								report_error(line, "???");
+								return false;
+							}
+						#endif
 							
 							ChibiLibraryFile file;
 							
@@ -791,7 +921,10 @@ static bool process_chibi_file(const char * filename)
 							else if (!strcmp(option, "platform"))
 							{
 								if (!eat_word_v2(linePtr, platform))
+								{
 									report_error(line, "missing platform name");
+									return false;
+								}
 							}
 							else
 							{
