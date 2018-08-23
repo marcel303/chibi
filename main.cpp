@@ -277,6 +277,7 @@ struct ChibiLibrary
 {
 	std::string name;
 	std::string path;
+	std::string group_name;
 	
 	bool isExecutable = false;
 	
@@ -294,7 +295,7 @@ struct ChibiLibrary
 	
 	void dump_info() const
 	{
-		printf("library: %s\n", name.c_str());
+		printf("%s: %s\n", isExecutable ? "app" : "library", name.c_str());
 		
 		for (auto & file : files)
 		{
@@ -349,8 +350,43 @@ static std::string s_platform;
 
 static std::vector<std::string> s_cmake_module_paths;
 
+static std::string s_currentGroup;
+
+struct FileHandle
+{
+	FILE * f = nullptr;
+	
+	FileHandle(const char * filename, const char * mode)
+	{
+		f = fopen(filename, mode);
+	}
+	
+	~FileHandle()
+	{
+		if (f != nullptr)
+		{
+			//printf("warning: file handle not closed normally. closing it now!\n");
+			
+			close();
+		}
+	}
+	
+	void close()
+	{
+		fclose(f);
+		f = nullptr;
+	}
+	
+	operator FILE*()
+	{
+		return f;
+	}
+};
+
 static bool process_chibi_file(const char * filename)
 {
+	s_currentLibrary = nullptr;
+	
 	char chibi_path[PATH_MAX];
 
 	if (!get_path_from_filename(filename, chibi_path, PATH_MAX))
@@ -361,7 +397,7 @@ static bool process_chibi_file(const char * filename)
 	
 	//
 	
-	FILE * f = fopen(filename, "rt");
+	FileHandle f(filename, "rt");
 
 	if (f == nullptr)
 	{
@@ -423,9 +459,32 @@ static bool process_chibi_file(const char * filename)
 							return false;
 						
 						const int length = s_current_line_length;
+						const std::string group = s_currentGroup;
+						
 						if (!process_chibi_file(chibi_file))
 							return false;
+						
+						s_currentLibrary = nullptr;
+						
 						s_current_line_length = length;
+						s_currentGroup = group;
+					}
+				}
+				else if (eat_word(linePtr, "global_group"))
+				{
+					const char * name;
+					
+					if (!eat_word_v2(linePtr, name))
+					{
+						report_error(line, "missing group name");
+						return false;
+					}
+					
+					s_currentGroup = name;
+					
+					if (s_currentLibrary != nullptr)
+					{
+						s_currentLibrary->group_name = name;
 					}
 				}
 				else if (eat_word(linePtr, "add_root"))
@@ -473,6 +532,9 @@ static bool process_chibi_file(const char * filename)
 					library->name = name;
 					library->path = chibi_path;
 					
+					if (s_currentGroup.empty() == false)
+						library->group_name = s_currentGroup;
+					
 					s_chibiInfo.libraries.push_back(library);
 					
 					s_currentLibrary = library;
@@ -499,6 +561,9 @@ static bool process_chibi_file(const char * filename)
 					
 					library->name = name;
 					library->path = chibi_path;
+					
+					if (s_currentGroup.empty() == false)
+						library->group_name = s_currentGroup;
 					
 					library->isExecutable = true;
 					
@@ -719,7 +784,7 @@ static bool process_chibi_file(const char * filename)
 								return false;
 							}
 							
-							FILE * target_file = fopen(full_path, "wt");
+							FileHandle target_file(full_path, "wt");
 							
 							if (target_file == nullptr)
 							{
@@ -732,7 +797,7 @@ static bool process_chibi_file(const char * filename)
 								{
 									library_file.compile = false;
 									
-									FILE * source_file = fopen(library_file.filename.c_str(), "rt");
+									FileHandle source_file(library_file.filename.c_str(), "rt");
 									
 									if (source_file == nullptr)
 									{
@@ -756,12 +821,10 @@ static bool process_chibi_file(const char * filename)
 									free(source_line);
 									source_line = nullptr;
 									
-									fclose(source_file);
-									source_file = nullptr;
+									source_file.close();
 								}
 								
-								fclose(target_file);
-								target_file = nullptr;
+								target_file.close();
 							}
 							
 							ChibiLibraryFile file;
@@ -783,7 +846,7 @@ static bool process_chibi_file(const char * filename)
 								return false;
 							}
 							
-							FILE * target_file = fopen(full_path, "wt");
+							FileHandle target_file(full_path, "wt");
 							
 							if (target_file == nullptr)
 							{
@@ -801,8 +864,7 @@ static bool process_chibi_file(const char * filename)
 									fprintf(target_file, "#include \"%s\"\n", library_file.filename.c_str());
 								}
 								
-								fclose(target_file);
-								target_file = nullptr;
+								target_file.close();
 							}
 							
 							ChibiLibraryFile file;
@@ -1093,6 +1155,26 @@ static bool process_chibi_file(const char * filename)
 						s_currentLibrary->resource_path = full_path;
 					}
 				}
+				else if (eat_word(linePtr, "group"))
+				{
+					if (s_currentLibrary == nullptr)
+					{
+						report_error(line, "group without a target");
+						return false;
+					}
+					else
+					{
+						const char * name;
+						
+						if (!eat_word_v2(linePtr, name))
+						{
+							report_error(line, "missing group name");
+							return false;
+						}
+						
+						s_currentLibrary->group_name = name;
+					}
+				}
 				else
 				{
 					report_error(line, "syntax error");
@@ -1114,7 +1196,9 @@ static bool process_chibi_file(const char * filename)
 
 		free(line);
 		line = nullptr;
-
+		
+		f.close();
+		
 		return true;
 	}
 }
@@ -1134,6 +1218,11 @@ struct StringBuilder
 	StringBuilder()
 	{
 		text.reserve(1 << 16);
+	}
+	
+	void Append(const char c)
+	{
+		text.push_back(c);
 	}
 	
 	void Append(const char * text)
@@ -1157,11 +1246,13 @@ struct CMakeWriter
 {
 	bool handle_library(ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
 	{
+	#if 1
 		if (library.isExecutable)
 			printf("handle_app: %s\n", library.name.c_str());
 		else
-			printf("handle_library: %s\n", library.name.c_str());
-		
+			printf("handle_lib: %s\n", library.name.c_str());
+	#endif
+	
 		traversed_libraries.insert(library.name);
 		
 		// recurse library dependencies
@@ -1281,18 +1372,21 @@ struct CMakeWriter
 	{
 		if (!library.library_dependencies.empty())
 		{
+			StringBuilder find;
+			StringBuilder link;
+			
+			link.AppendFormat("target_link_libraries(%s", library.name.c_str());
+			
 			for (auto & library_dependency : library.library_dependencies)
 			{
 				if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 				{
-					sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
-						library.name.c_str(),
+					link.AppendFormat("\n\tPUBLIC %s",
 						library_dependency.name.c_str());
 				}
 				else if (library_dependency.type == ChibiLibraryDependency::kType_Local)
 				{
-					sb.AppendFormat("target_link_libraries(%s PRIVATE %s)\n",
-						library.name.c_str(),
+					link.AppendFormat("\n\tPUBLIC %s",
 						library_dependency.path.c_str());
 				}
 				else if (library_dependency.type == ChibiLibraryDependency::kType_Find)
@@ -1306,10 +1400,9 @@ struct CMakeWriter
 						
 					}
 					
-					sb.AppendFormat("find_library(%s %s)\n", var_name, library_dependency.name.c_str());
+					find.AppendFormat("find_library(%s %s)\n", var_name, library_dependency.name.c_str());
 					
-					sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s})\n",
-						library.name.c_str(),
+					link.AppendFormat("\n\tPUBLIC ${%s}",
 						var_name);
 				}
 				else
@@ -1317,12 +1410,27 @@ struct CMakeWriter
 					report_error(nullptr, "internal error: unknown library dependency type");
 					return false;
 				}
+			}
+			
+			if (!find.text.empty())
+			{
+				find.Append("\n");
 				
+				sb.Append(find.text.c_str());
+			}
+			
+			link.Append(")\n");
+			link.Append("\n");
+			
+			sb.Append(link.text.c_str());
+			
+			for (auto & library_dependency : library.library_dependencies)
+			{
 				if (library_dependency.embed_framework)
 				{
 				// fixme : this is just plain ugly
-					sb.AppendFormat("file(COPY \"%s\" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", library_dependency.path.c_str());
-					sb.AppendFormat("file(COPY \"%s\" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", library_dependency.path.c_str());
+					sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", library_dependency.path.c_str());
+					sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", library_dependency.path.c_str());
 				}
 			}
 			
@@ -1339,20 +1447,25 @@ struct CMakeWriter
 		{
 			for (auto & package_dependency : library.package_dependencies)
 			{
-				sb.Append("find_package(PkgConfig)\n");
-				
 				sb.AppendFormat("find_package(%s REQUIRED)\n", package_dependency.c_str());
-				
+			}
+			sb.Append("\n");
+			
+			for (auto & package_dependency : library.package_dependencies)
+			{
 				sb.AppendFormat("target_include_directories(%s PRIVATE %s \"${%s_INCLUDE_DIRS}\")\n",
 					library.name.c_str(),
 					library.path.c_str(),
 					package_dependency.c_str());
-				
+			}
+			sb.Append("\n");
+			
+			for (auto & package_dependency : library.package_dependencies)
+			{
 				sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
 					library.name.c_str(),
 					package_dependency.c_str());
 			}
-			
 			sb.Append("\n");
 		}
 		
@@ -1373,8 +1486,6 @@ struct CMakeWriter
 	
 	bool write()
 	{
-		// gather the targets to emit
-		
 		// gather the library targets to emit
 		
 		std::set<std::string> traversed_libraries;
@@ -1418,7 +1529,7 @@ struct CMakeWriter
 		
 	// fixme : output path
 		const char * output_filename = "/Users/thecat/chibi/output/CMakeLists.txt";
-		FILE * f = fopen(output_filename, "wt");
+		FileHandle f(output_filename, "wt");
 		
 		if (f == nullptr)
 		{
@@ -1430,9 +1541,12 @@ struct CMakeWriter
 			{
 				StringBuilder sb;
 				
-				sb.Append("cmake_minimum_required(VERSION 2.6)\n");
+				sb.Append("cmake_minimum_required(VERSION 3.6)\n");
 				sb.Append("\n");
-				sb.Append("set(CMAKE_CXX_STANDARD 14)\n");
+				sb.Append("set(CMAKE_CXX_STANDARD 11)\n");
+				sb.Append("\n");
+				
+				sb.Append("set_property(GLOBAL PROPERTY USE_FOLDERS ON)\n");
 				sb.Append("\n");
 				
 				if (!s_cmake_module_paths.empty())
@@ -1442,9 +1556,36 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
+				sb.Append("find_package(PkgConfig REQUIRED)\n");
+				sb.Append("\n");
+				
+				sb.Append("set(CMAKE_MACOSX_RPATH ON)\n");
+				sb.Append("\n");
+				
+				sb.Append("set(SOURCE_GROUP_DELIMITER \"/\")\n");
+				sb.Append("\n");
+				
 				if (!output(f, sb))
 					return false;
 			}
+			
+		#if 0
+			{
+				// CMake has a nice ability where it shows you which include directories and compile-time definitions
+				// are used for the targets being processed. we don't enable this by default, since it generates a lot
+				// of messages, so it must be enabled here
+				
+				StringBuilder sb;
+				
+				sb.Append("set(CMAKE_DEBUG_TARGET_PROPERTIES\n");
+				sb.Append("\tINCLUDE_DIRECTORIES\n");
+				sb.Append("\tCOMPILE_DEFINITIONS\n");
+				sb.Append(")\n");
+				
+				if (!output(f, sb))
+					return false;
+			}
+		#endif
 			
 			for (auto & library : libraries)
 			{
@@ -1460,6 +1601,8 @@ struct CMakeWriter
 				
 				sb.Append("add_library(");
 				sb.Append(library->name.c_str());
+				sb.Append("\n\tSTATIC");
+				//sb.Append("\n\tSHARED");
 				
 				for (auto & file : library->files)
 				{
@@ -1472,6 +1615,13 @@ struct CMakeWriter
 				
 				sb.Append(")\n");
 				sb.Append("\n");
+				
+				if (library->group_name.empty() == false)
+				{
+					sb.AppendFormat("set_target_properties(%s PROPERTIES FOLDER %s)\n",
+						library->name.c_str(),
+						library->group_name.c_str());
+				}
 				
 				if (has_compile_disabled_files)
 				{
@@ -1529,6 +1679,13 @@ struct CMakeWriter
 				sb.Append(")\n");
 				sb.Append("\n");
 				
+				if (app->group_name.empty() == false)
+				{
+					sb.AppendFormat("set_target_properties(%s PROPERTIES FOLDER %s)\n",
+						app->name.c_str(),
+						app->group_name.c_str());
+				}
+				
 				if (!app->resource_path.empty())
 				{
 					sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\"%s\")\n",
@@ -1561,14 +1718,18 @@ struct CMakeWriter
 				
 				sb.Append("# --- source group memberships ---\n");
 				sb.Append("\n");
-				
+
 				for (auto & file : library->files)
 				{
 					if (file.group.empty())
+					{
+						sb.AppendFormat("source_group(\"%s\" FILES \"%s\")\n", "", file.filename.c_str());
+						empty = false;
 						continue;
+					}
 					
 					sb.AppendFormat("source_group(\"%s\" FILES \"%s\")\n", file.group.c_str(), file.filename.c_str());
-					
+				
 					empty = false;
 				}
 				
@@ -1581,7 +1742,7 @@ struct CMakeWriter
 				}
 			}
 			
-			fclose(f);
+			f.close();
 		}
 		
 		return true;
