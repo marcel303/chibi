@@ -1,10 +1,60 @@
 #include "filesystem.h"
 
+#include <algorithm>
 #include <limits.h>
 #include <set>
+#include <stdarg.h>
 #include <string>
-#include <unistd.h>
 #include <vector>
+
+#ifdef _MSC_VER
+	#include <direct.h>
+	#include <stdint.h>
+	#include <Windows.h>
+	#ifndef PATH_MAX
+		#define PATH_MAX _MAX_PATH
+	#endif
+	typedef SSIZE_T ssize_t;
+	static ssize_t getline(char ** _line, size_t * _line_size, FILE * file)
+	{
+		char *& line = *_line;
+		size_t & line_size = *_line_size;
+
+		if (line == nullptr)
+		{
+			line_size = 32;
+			line = (char*)malloc(line_size);
+		}
+
+		for (;;)
+		{
+			auto pos = ftell(file);
+
+			const char * r = fgets(line, line_size, file);
+
+			if (r == nullptr)
+				break;
+
+			const int length = strlen(line);
+
+			if (length == line_size - 1)
+			{
+				free(line);
+
+				line_size *= 2;
+				line = (char*)malloc(line_size);
+
+				fseek(file, pos, SEEK_SET);
+			}
+			else
+				return length;
+		}
+
+		return -1;
+	}
+#else
+	#include <unistd.h>
+#endif
 
 // todo : redesign the embed_framework option
 
@@ -1175,6 +1225,18 @@ static bool process_chibi_file(const char * filename)
 						s_currentLibrary->group_name = name;
 					}
 				}
+				else if (eat_word(linePtr, "add_dist_files"))
+				{
+					printf("todo!\n");
+
+					for (;;)
+					{
+						const char * file;
+
+						if (!eat_word_v2(linePtr, file))
+							break;
+					}
+				}
 				else
 				{
 					report_error(line, "syntax error");
@@ -1264,16 +1326,16 @@ struct CMakeWriter
 			
 			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 			{
-				ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.name.c_str());
+				ChibiLibrary * found_library = s_chibiInfo.find_library(library_dependency.name.c_str());
 				
-				if (library == nullptr)
+				if (found_library == nullptr)
 				{
-					report_error(nullptr, "failed to find library dependency: %s", library_dependency.name.c_str());
+					report_error(nullptr, "failed to find library dependency: %s for target %s", library_dependency.name.c_str(), library.name.c_str());
 					return false;
 				}
 				else
 				{
-					if (handle_library(*library, traversed_libraries, libraries) == false)
+					if (handle_library(*found_library, traversed_libraries, libraries) == false)
 						return false;
 				}
 			}
@@ -1528,7 +1590,8 @@ struct CMakeWriter
 		// write CMake output
 		
 	// fixme : output path
-		const char * output_filename = "/Users/thecat/chibi/output/CMakeLists.txt";
+		//const char * output_filename = "/Users/thecat/chibi/output/CMakeLists.txt";
+		const char * output_filename = "d:/repos/chibi_output/CMakeLists.txt";
 		FileHandle f(output_filename, "wt");
 		
 		if (f == nullptr)
@@ -1556,10 +1619,18 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
-				sb.Append("find_package(PkgConfig REQUIRED)\n");
+				sb.Append("if (APPLE)\n");
+				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
+				sb.Append("endif (APPLE)\n");
 				sb.Append("\n");
 				
 				sb.Append("set(CMAKE_MACOSX_RPATH ON)\n");
+				sb.Append("\n");
+
+				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND NOT CMAKE_CL_64)\n");
+				sb.Append("\tadd_compile_options(/arch:SSE2)\n");
+				sb.Append("\tadd_definitions(-D__SSE2__=1)\n");
+				sb.Append("endif ()\n");
 				sb.Append("\n");
 				
 				sb.Append("set(SOURCE_GROUP_DELIMITER \"/\")\n");
@@ -1794,7 +1865,7 @@ int main(int argc, const char * argv[])
 	if (cwd[0] == 0)
 	{
 		// get the current working directory. this is the root of our operations
-		
+
 		if (getcwd(cwd, PATH_MAX) == nullptr)
 		{
 			report_error(nullptr, "failed to get current working directory");
@@ -1802,6 +1873,10 @@ int main(int argc, const char * argv[])
 		}
 	}
 	
+	for (int i = 0; cwd[i] != 0; ++i)
+		if (cwd[i] == '\\')
+			cwd[i] = '/';
+
 	// set the platform name
 	
 #if defined(MACOS)
