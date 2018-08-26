@@ -295,7 +295,8 @@ struct ChibiLibraryDependency
 		kType_Undefined,
 		kType_Generated,
 		kType_Local,
-		kType_Find
+		kType_Find,
+		kType_Global
 	};
 	
 	std::string name;
@@ -1020,6 +1021,8 @@ static bool process_chibi_file(const char * filename)
 								type = ChibiLibraryDependency::kType_Local;
 							else if (!strcmp(option, "find"))
 								type = ChibiLibraryDependency::kType_Find;
+							else if (!strcmp(option, "global"))
+								type = ChibiLibraryDependency::kType_Global;
 							else if (!strcmp(option, "embed_framework"))
 								embed_framework = true;
 							else
@@ -1347,6 +1350,10 @@ struct CMakeWriter
 			{
 				// nothing to do here
 			}
+			else if (library_dependency.type == ChibiLibraryDependency::kType_Global)
+			{
+				// nothing to do here
+			}
 			else
 			{
 				report_error(nullptr, "internal error: unknown library dependency type");
@@ -1466,6 +1473,11 @@ struct CMakeWriter
 					
 					link.AppendFormat("\n\tPUBLIC ${%s}",
 						var_name);
+				}
+				else if (library_dependency.type == ChibiLibraryDependency::kType_Global)
+				{
+					link.AppendFormat("\n\tPUBLIC %s",
+						library_dependency.name.c_str());
 				}
 				else
 				{
@@ -1777,6 +1789,10 @@ struct CMakeWriter
 				if (!write_package_dependencies(sb, *app))
 					return false;
 				
+			// todo : let libraries and apps add target properties
+				if (s_platform == "windows")
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \"/SAFESEH:NO\")", app->name.c_str());
+
 				if (!output(f, sb))
 					return false;
 			}
