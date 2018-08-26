@@ -343,6 +343,8 @@ struct ChibiLibrary
 	std::vector<ChibiCompileDefinition> compile_definitions;
 	
 	std::string resource_path;
+
+	std::vector<std::string> dist_files;
 	
 	void dump_info() const
 	{
@@ -1230,14 +1232,29 @@ static bool process_chibi_file(const char * filename)
 				}
 				else if (eat_word(linePtr, "add_dist_files"))
 				{
-					printf("todo!\n");
-
-					for (;;)
+					if (s_currentLibrary == nullptr)
 					{
-						const char * file;
+						report_error(line, "add_dist_files without a target");
+						return false;
+					}
+					else
+					{
+						for (;;)
+						{
+							const char * file;
 
-						if (!eat_word_v2(linePtr, file))
-							break;
+							if (!eat_word_v2(linePtr, file))
+								break;
+
+							char full_path[PATH_MAX];
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", file))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+
+							s_currentLibrary->dist_files.push_back(full_path);
+						}
 					}
 				}
 				else
@@ -1508,6 +1525,15 @@ struct CMakeWriter
 				}
 			}
 			
+			sb.Append("\n");
+
+			for (auto & dist_file : library.dist_files)
+			{
+				// fixme : this is just plain ugly
+				sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", dist_file.c_str());
+				sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", dist_file.c_str());
+			}
+
 			sb.Append("\n");
 		}
 		
