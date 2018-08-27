@@ -1,11 +1,61 @@
 #include "filesystem.h"
 
+#include <algorithm>
 #include <limits.h>
 #include <map>
 #include <set>
+#include <stdarg.h>
 #include <string>
-#include <unistd.h>
 #include <vector>
+
+#ifdef _MSC_VER
+	#include <direct.h>
+	#include <stdint.h>
+	#include <Windows.h>
+	#ifndef PATH_MAX
+		#define PATH_MAX _MAX_PATH
+	#endif
+	typedef SSIZE_T ssize_t;
+	static ssize_t getline(char ** _line, size_t * _line_size, FILE * file)
+	{
+		char *& line = *_line;
+		size_t & line_size = *_line_size;
+
+		if (line == nullptr)
+		{
+			line_size = 32;
+			line = (char*)malloc(line_size);
+		}
+
+		for (;;)
+		{
+			auto pos = ftell(file);
+
+			const char * r = fgets(line, line_size, file);
+
+			if (r == nullptr)
+				break;
+
+			const int length = strlen(line);
+
+			if (length == line_size - 1)
+			{
+				free(line);
+
+				line_size *= 2;
+				line = (char*)malloc(line_size);
+
+				fseek(file, pos, SEEK_SET);
+			}
+			else
+				return length;
+		}
+
+		return -1;
+	}
+#else
+	#include <unistd.h>
+#endif
 
 // todo : redesign the embed_framework option
 
@@ -246,7 +296,8 @@ struct ChibiLibraryDependency
 		kType_Undefined,
 		kType_Generated,
 		kType_Local,
-		kType_Find
+		kType_Find,
+		kType_Global
 	};
 	
 	std::string name;
@@ -293,6 +344,8 @@ struct ChibiLibrary
 	std::vector<ChibiCompileDefinition> compile_definitions;
 	
 	std::string resource_path;
+
+	std::vector<std::string> dist_files;
 	
 	void dump_info() const
 	{
@@ -971,6 +1024,8 @@ static bool process_chibi_file(const char * filename)
 								type = ChibiLibraryDependency::kType_Local;
 							else if (!strcmp(option, "find"))
 								type = ChibiLibraryDependency::kType_Find;
+							else if (!strcmp(option, "global"))
+								type = ChibiLibraryDependency::kType_Global;
 							else if (!strcmp(option, "embed_framework"))
 								embed_framework = true;
 							else
@@ -1176,6 +1231,33 @@ static bool process_chibi_file(const char * filename)
 						s_currentLibrary->group_name = name;
 					}
 				}
+				else if (eat_word(linePtr, "add_dist_files"))
+				{
+					if (s_currentLibrary == nullptr)
+					{
+						report_error(line, "add_dist_files without a target");
+						return false;
+					}
+					else
+					{
+						for (;;)
+						{
+							const char * file;
+
+							if (!eat_word_v2(linePtr, file))
+								break;
+
+							char full_path[PATH_MAX];
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", file))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+
+							s_currentLibrary->dist_files.push_back(full_path);
+						}
+					}
+				}
 				else
 				{
 					report_error(line, "syntax error");
@@ -1265,16 +1347,16 @@ struct CMakeWriter
 			
 			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 			{
-				ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.name.c_str());
+				ChibiLibrary * found_library = s_chibiInfo.find_library(library_dependency.name.c_str());
 				
-				if (library == nullptr)
+				if (found_library == nullptr)
 				{
-					report_error(nullptr, "failed to find library dependency: %s", library_dependency.name.c_str());
+					report_error(nullptr, "failed to find library dependency: %s for target %s", library_dependency.name.c_str(), library.name.c_str());
 					return false;
 				}
 				else
 				{
-					if (handle_library(*library, traversed_libraries, libraries) == false)
+					if (handle_library(*found_library, traversed_libraries, libraries) == false)
 						return false;
 				}
 			}
@@ -1283,6 +1365,10 @@ struct CMakeWriter
 				// nothing to do here
 			}
 			else if (library_dependency.type == ChibiLibraryDependency::kType_Find)
+			{
+				// nothing to do here
+			}
+			else if (library_dependency.type == ChibiLibraryDependency::kType_Global)
 			{
 				// nothing to do here
 			}
@@ -1406,6 +1492,11 @@ struct CMakeWriter
 					link.AppendFormat("\n\tPUBLIC ${%s}",
 						var_name);
 				}
+				else if (library_dependency.type == ChibiLibraryDependency::kType_Global)
+				{
+					link.AppendFormat("\n\tPUBLIC %s",
+						library_dependency.name.c_str());
+				}
 				else
 				{
 					report_error(nullptr, "internal error: unknown library dependency type");
@@ -1441,6 +1532,13 @@ struct CMakeWriter
 			
 			if (has_embed_dependency)
 				sb.Append("\n");
+			
+			for (auto & dist_file : library.dist_files)
+			{
+				// fixme : this is just plain ugly
+				sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", dist_file.c_str());
+				sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", dist_file.c_str());
+			}
 		}
 		
 		return true;
@@ -1534,7 +1632,8 @@ struct CMakeWriter
 		// write CMake output
 		
 	// fixme : output path
-		const char * output_filename = "/Users/thecat/chibi/output/CMakeLists.txt";
+		//const char * output_filename = "/Users/thecat/chibi/output/CMakeLists.txt";
+		const char * output_filename = "d:/repos/chibi_output/CMakeLists.txt";
 		FileHandle f(output_filename, "wt");
 		
 		if (f == nullptr)
@@ -1562,10 +1661,18 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
-				sb.Append("find_package(PkgConfig REQUIRED)\n");
+				sb.Append("if (APPLE)\n");
+				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
+				sb.Append("endif (APPLE)\n");
 				sb.Append("\n");
 				
 				sb.Append("set(CMAKE_MACOSX_RPATH ON)\n");
+				sb.Append("\n");
+
+				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND NOT CMAKE_CL_64)\n");
+				sb.Append("\tadd_compile_options(/arch:SSE2)\n");
+				sb.Append("\tadd_definitions(-D__SSE2__=1)\n");
+				sb.Append("endif ()\n");
 				sb.Append("\n");
 				
 				sb.Append("set(SOURCE_GROUP_DELIMITER \"/\")\n");
@@ -1712,6 +1819,10 @@ struct CMakeWriter
 				if (!write_package_dependencies(sb, *app))
 					return false;
 				
+			// todo : let libraries and apps add target properties
+				if (s_platform == "windows")
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \"/SAFESEH:NO\")", app->name.c_str());
+
 				if (!output(f, sb))
 					return false;
 			}
@@ -1827,7 +1938,7 @@ int main(int argc, const char * argv[])
 	if (cwd[0] == 0)
 	{
 		// get the current working directory. this is the root of our operations
-		
+
 		if (getcwd(cwd, PATH_MAX) == nullptr)
 		{
 			report_error(nullptr, "failed to get current working directory");
@@ -1835,6 +1946,10 @@ int main(int argc, const char * argv[])
 		}
 	}
 	
+	for (int i = 0; cwd[i] != 0; ++i)
+		if (cwd[i] == '\\')
+			cwd[i] = '/';
+
 	// set the platform name
 	
 #if defined(MACOS)
