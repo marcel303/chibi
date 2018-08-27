@@ -1,6 +1,7 @@
 #include "filesystem.h"
 
 #include <limits.h>
+#include <map>
 #include <set>
 #include <string>
 #include <unistd.h>
@@ -1424,17 +1425,22 @@ struct CMakeWriter
 			
 			sb.Append(link.text.c_str());
 			
+			bool has_embed_dependency = false;
+			
 			for (auto & library_dependency : library.library_dependencies)
 			{
 				if (library_dependency.embed_framework)
 				{
+					has_embed_dependency = true;
+					
 				// fixme : this is just plain ugly
 					sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", library_dependency.path.c_str());
 					sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", library_dependency.path.c_str());
 				}
 			}
 			
-			sb.Append("\n");
+			if (has_embed_dependency)
+				sb.Append("\n");
 		}
 		
 		return true;
@@ -1716,9 +1722,35 @@ struct CMakeWriter
 				
 				StringBuilder sb;
 				
-				sb.Append("# --- source group memberships ---\n");
+				sb.AppendFormat("# --- source group memberships for %s ---\n", library->name.c_str());
 				sb.Append("\n");
+				
+			#if 1
+				std::map<std::string, std::vector<ChibiLibraryFile*>> files_by_group;
 
+				for (auto & file : library->files)
+				{
+					auto & group_files = files_by_group[file.group];
+					
+					group_files.push_back(&file);
+				}
+				
+				for (auto & group_files_itr : files_by_group)
+				{
+					auto & group = group_files_itr.first;
+					auto & files = group_files_itr.second;
+					
+					sb.AppendFormat("source_group(\"%s\" FILES", group.c_str());
+					
+					for (auto & file : files)
+						sb.AppendFormat("\n\t\"%s\"", file->filename.c_str());
+					
+					sb.Append(")\n");
+					sb.Append("\n");
+				
+					empty = false;
+				}
+			#else
 				for (auto & file : library->files)
 				{
 					if (file.group.empty())
@@ -1734,6 +1766,7 @@ struct CMakeWriter
 				}
 				
 				sb.Append("\n");
+			#endif
 				
 				if (empty == false)
 				{
