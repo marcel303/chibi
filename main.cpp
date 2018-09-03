@@ -1381,7 +1381,7 @@ struct CMakeWriter
 {
 	bool handle_library(ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
 	{
-	#if 1
+	#if 0
 		if (library.isExecutable)
 			printf("handle_app: %s\n", library.name.c_str());
 		else
@@ -1576,11 +1576,8 @@ struct CMakeWriter
 				{
 					has_embed_dependency = true;
 					
-				#if 0
-				// fixme : this is just plain ugly
-					sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", library_dependency.path.c_str());
-					sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", library_dependency.path.c_str());
-				#else
+					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
+					
 					const char * filename;
 					
 					auto i = library_dependency.path.find_last_of('/');
@@ -1599,7 +1596,6 @@ struct CMakeWriter
 						library_dependency.path.c_str(),
 						filename,
 						library_dependency.path.c_str());
-				#endif
 				}
 			}
 			
@@ -1608,9 +1604,26 @@ struct CMakeWriter
 			
 			for (auto & dist_file : library.dist_files)
 			{
-				// fixme : this is just plain ugly
-				sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug/)\n", dist_file.c_str());
-				sb.AppendFormat("file(COPY \"%s\"\n\tDESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Release/)\n", dist_file.c_str());
+				// create a custom command where the embedded file(s) are copied into a place where the executable can find it
+				
+					const char * filename;
+				
+					auto i = dist_file.find_last_of('/');
+				
+					if (i == std::string::npos)
+						filename = dist_file.c_str();
+					else
+						filename = &dist_file[i + 1];
+				
+				sb.AppendFormat(
+					"add_custom_command(\n" \
+					"\tTARGET %s POST_BUILD\n" \
+					"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
+					"\tDEPENDS \"%s\")\n",
+					library.name.c_str(),
+					dist_file.c_str(),
+					filename,
+					dist_file.c_str());
 			}
 		}
 		
@@ -1920,6 +1933,10 @@ struct CMakeWriter
 				{
 					auto & group = group_files_itr.first;
 					auto & files = group_files_itr.second;
+				
+				#if 0
+					printf("group: %s\n", group.c_str());
+				#endif
 					
 					sb.AppendFormat("source_group(\"%s\" FILES", group.c_str());
 					
@@ -2037,11 +2054,11 @@ int main(int argc, const char * argv[])
 	
 	// create the current absolute path given the source path command line option and the current working directory
 	
-	char current_path[PATH_MAX];
+	char source_path[PATH_MAX];
 	
 	if (!strcmp(src_path, "."))
 	{
-		if (!concat(current_path, sizeof(current_path), cwd))
+		if (!concat(source_path, sizeof(source_path), cwd))
 		{
 			report_error(nullptr, "failed to create absolute path");
 			return -1;
@@ -2051,7 +2068,7 @@ int main(int argc, const char * argv[])
 	{
 		src_path += 2;
 		
-		if (!concat(current_path, sizeof(current_path), cwd, "/", src_path))
+		if (!concat(source_path, sizeof(source_path), cwd, "/", src_path))
 		{
 			report_error(nullptr, "failed to create absolute path");
 			return -1;
@@ -2059,17 +2076,11 @@ int main(int argc, const char * argv[])
 	}
 	else
 	{
-		if (!copy_string(current_path, sizeof(current_path), src_path))
+		if (!copy_string(source_path, sizeof(source_path), src_path))
 		{
 			report_error(nullptr, "failed to copy current path");
 			return -1;
 		}
-	}
-	
-	if (!concat(cwd, sizeof(cwd), src_path))
-	{
-		report_error(nullptr, "failed to create absolute path");
-		return -1;
 	}
 
 	// set the platform name
@@ -2085,6 +2096,13 @@ int main(int argc, const char * argv[])
 #endif
 	
 	// recursively find build_root
+	
+	char current_path[PATH_MAX];
+	if (!copy_string(current_path, sizeof(current_path), source_path))
+	{
+		report_error(nullptr, "failed to copy path");
+		return -1;
+	}
 
 	char build_root[PATH_MAX];
 	memset(build_root, 0, sizeof(build_root));
@@ -2120,6 +2138,12 @@ int main(int argc, const char * argv[])
 		report_error(nullptr, "failed to find chibi_root file");
 		return -1;
 	}
+	
+#if 1
+	printf("source_path: %s\n", source_path);
+	printf("destination_path: %s\n", dst_path);
+	printf("build_root: %s\n", build_root);
+#endif
 
 	if (!process_chibi_file(build_root))
 	{
@@ -2127,7 +2151,7 @@ int main(int argc, const char * argv[])
 		return -1;
 	}
 	
-	s_chibiInfo.dump_info();
+	//s_chibiInfo.dump_info();
 	
 	char output_filename[PATH_MAX];
 	
