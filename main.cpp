@@ -1596,6 +1596,7 @@ struct CMakeWriter
 						library_dependency.path.c_str(),
 						filename,
 						library_dependency.path.c_str());
+					sb.Append("message(\"CMAKE_CURRENT_BINARY_DIR: ${CMAKE_CURRENT_BINARY_DIR}\")\n");
 				}
 			}
 			
@@ -1865,6 +1866,7 @@ struct CMakeWriter
 				sb.Append("\n");
 				sb.Append("add_executable(");
 				sb.Append(app->name.c_str());
+				sb.Append("\n\tMACOSX_BUNDLE");
 				
 				for (auto & file : app->files)
 				{
