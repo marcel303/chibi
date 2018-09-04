@@ -1,6 +1,7 @@
 #include "filesystem.h"
 
 #include <algorithm>
+#include <deque>
 #include <limits.h>
 #include <map>
 #include <set>
@@ -275,6 +276,21 @@ static bool string_starts_with(const std::string & text, const std::string & sub
 
 	for (size_t i = 0; i < length2; ++i)
 		if (text[i] != substring[i])
+			return false;
+
+	return true;
+}
+
+static bool string_ends_with(const std::string & text, const std::string & substring)
+{
+	const size_t length1 = text.length();
+	const size_t length2 = substring.length();
+
+	if (length1 < length2)
+		return false;
+
+	for (size_t i = length1 - length2, j = 0; i < length1; ++i, ++j)
+		if (text[i] != substring[j])
 			return false;
 
 	return true;
@@ -1567,65 +1583,6 @@ struct CMakeWriter
 			link.Append("\n");
 			
 			sb.Append(link.text.c_str());
-			
-			bool has_embed_dependency = false;
-			
-			for (auto & library_dependency : library.library_dependencies)
-			{
-				if (library_dependency.embed_framework)
-				{
-					has_embed_dependency = true;
-					
-					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
-					
-					const char * filename;
-					
-					auto i = library_dependency.path.find_last_of('/');
-					
-					if (i == std::string::npos)
-						filename = library_dependency.path.c_str();
-					else
-						filename = &library_dependency.path[i + 1];
-					
-					sb.AppendFormat(
-						"add_custom_command(\n" \
-						"\tTARGET %s POST_BUILD\n" \
-						"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
-						"\tDEPENDS \"%s\")\n",
-						library.name.c_str(),
-						library_dependency.path.c_str(),
-						filename,
-						library_dependency.path.c_str());
-					sb.Append("message(\"CMAKE_CURRENT_BINARY_DIR: ${CMAKE_CURRENT_BINARY_DIR}\")\n");
-				}
-			}
-			
-			if (has_embed_dependency)
-				sb.Append("\n");
-			
-			for (auto & dist_file : library.dist_files)
-			{
-				// create a custom command where the embedded file(s) are copied into a place where the executable can find it
-				
-					const char * filename;
-				
-					auto i = dist_file.find_last_of('/');
-				
-					if (i == std::string::npos)
-						filename = dist_file.c_str();
-					else
-						filename = &dist_file[i + 1];
-				
-				sb.AppendFormat(
-					"add_custom_command(\n" \
-					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
-					"\tDEPENDS \"%s\")\n",
-					library.name.c_str(),
-					dist_file.c_str(),
-					filename,
-					dist_file.c_str());
-			}
 		}
 		
 		return true;
@@ -1658,6 +1615,171 @@ struct CMakeWriter
 					package_dependency.c_str());
 			}
 			sb.Append("\n");
+		}
+		
+		return true;
+	}
+	
+	static bool gather_all_library_dependencies(const ChibiLibrary & library, std::vector<ChibiLibraryDependency> & library_dependencies)
+	{
+		std::set<std::string> traversed_libraries;
+		std::deque<const ChibiLibrary*> stack;
+		
+		stack.push_back(&library);
+		
+		traversed_libraries.insert(library.name);
+		
+		while (stack.empty() == false)
+		{
+			const ChibiLibrary * library = stack.front();
+			
+			for (auto & library_dependency : library->library_dependencies)
+			{
+				if (traversed_libraries.count(library_dependency.name) == 0)
+				{
+					traversed_libraries.insert(library_dependency.name);
+					
+					library_dependencies.push_back(library_dependency);
+					
+					if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+					{
+						const ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.name.c_str());
+						
+						if (library == nullptr)
+						{
+							report_error(nullptr, "failed to resolve library dependency: %s", library_dependency.name.c_str());
+							return false;
+						}
+
+						stack.push_back(library);
+					}
+				}
+			}
+			
+			stack.pop_front();
+		}
+		
+		return true;
+	}
+	
+	static bool write_embedded_app_files(StringBuilder & sb, const ChibiLibrary & app)
+	{
+		std::vector<ChibiLibraryDependency> library_dependencies;
+		
+		if (!gather_all_library_dependencies(app, library_dependencies))
+			return false;
+		
+		bool has_embed_dependency = false;
+		
+		for (auto & library_dependency : library_dependencies)
+		{
+			if (library_dependency.embed_framework)
+			{
+				has_embed_dependency = true;
+				
+				// create a custom command where the embedded file(s) are copied into a place where the executable can find it
+				
+				const char * filename;
+				
+				auto i = library_dependency.path.find_last_of('/');
+				
+				if (i == std::string::npos)
+					filename = library_dependency.path.c_str();
+				else
+					filename = &library_dependency.path[i + 1];
+				
+				if (s_platform == "macos")
+				{
+				// todo : use CMAKE_RUNTIME_OUTPUT_DIRECTORY instead of binary_dir + config ?
+					sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app.name.c_str());
+					
+					if (string_ends_with(filename, ".framework"))
+					{
+						// use rsync to recursively copy files if this is a framework
+						
+						// but first make sure the target directory exists
+						
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Frameworks\"\n" \
+								"\tDEPENDS \"%s\")\n",
+							app.name.c_str(),
+							library_dependency.path.c_str());
+						
+						// rsync
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND rsync -r \"%s\" \"${BUNDLE_PATH}/Contents/Frameworks\"\n" \
+								"\tDEPENDS \"%s\")\n",
+							app.name.c_str(),
+							library_dependency.path.c_str(),
+							library_dependency.path.c_str());
+					}
+					else
+					{
+						// just copy the file (if it has changed or doesn't exist)
+						
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${BUNDLE_PATH}/Contents/MacOS/%s\"\n" \
+								"\tDEPENDS \"%s\")\n",
+							app.name.c_str(),
+							library_dependency.path.c_str(),
+							filename,
+							library_dependency.path.c_str());
+					}
+				}
+				else
+				{
+					sb.AppendFormat(
+						"add_custom_command(\n" \
+							"\tTARGET %s POST_BUILD\n" \
+							"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
+							"\tDEPENDS \"%s\")\n",
+						app.name.c_str(),
+						library_dependency.path.c_str(),
+						filename,
+						library_dependency.path.c_str());
+				}
+			}
+		}
+	
+		if (has_embed_dependency)
+			sb.Append("\n");
+		
+		for (auto & library_dependency : library_dependencies)
+		{
+			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+			{
+				const ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.name.c_str());
+				
+				for (auto & dist_file : library->dist_files)
+				{
+					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
+					
+						const char * filename;
+					
+						auto i = dist_file.find_last_of('/');
+					
+						if (i == std::string::npos)
+							filename = dist_file.c_str();
+						else
+							filename = &dist_file[i + 1];
+					
+					sb.AppendFormat(
+						"add_custom_command(\n" \
+							"\tTARGET %s POST_BUILD\n" \
+							"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
+							"\tDEPENDS \"%s\")\n",
+						app.name.c_str(),
+						dist_file.c_str(),
+						filename,
+						dist_file.c_str());
+				}
+			}
 		}
 		
 		return true;
@@ -1902,6 +2024,9 @@ struct CMakeWriter
 					return false;
 				
 				if (!write_package_dependencies(sb, *app))
+					return false;
+				
+				if (!write_embedded_app_files(sb, *app))
 					return false;
 				
 			// todo : let libraries and apps add target properties
