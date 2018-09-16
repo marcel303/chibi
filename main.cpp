@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 
+// todo : add ability to generate for a single target, or through regex ?
+// todo : add "compile_definition DEBUG 1 config Debug config SlowDebug" to add compile definition for specific build types
+
 #ifdef _MSC_VER
 	#include <direct.h>
 	#include <stdint.h>
@@ -329,6 +332,9 @@ struct ChibiHeaderPath
 	std::string path;
 	
 	bool expose = false;
+	
+	std::string alias_through_copy;
+	std::string alias_through_copy_path;
 };
 
 struct ChibiCompileDefinition
@@ -370,11 +376,17 @@ struct ChibiLibrary
 		for (auto & file : files)
 		{
 			printf("\tfile: %s\n", file.filename.c_str());
+			if (file.group.empty() == false)
+				printf("\t\tgroup: %s\n", file.group.c_str());
 		}
 		
 		for (auto & header_path : header_paths)
 		{
 			printf("\theader path: %s\n", header_path.path.c_str());
+			if (header_path.expose)
+				printf("\t\texpose\n");
+			if (header_path.alias_through_copy.empty() == false)
+				printf("\t\talias_through_copy: %s\n", header_path.alias_through_copy.c_str());
 		}
 	}
 };
@@ -1177,6 +1189,8 @@ static bool process_chibi_file(const char * filename)
 						
 						const char * platform = nullptr;
 						
+						const char * alias_through_copy = nullptr;
+						
 						for (;;)
 						{
 							const char * option;
@@ -1191,6 +1205,14 @@ static bool process_chibi_file(const char * filename)
 								if (!eat_word_v2(linePtr, platform))
 								{
 									report_error(line, "missing platform name");
+									return false;
+								}
+							}
+							else if (!strcmp(option, "alias_through_copy"))
+							{
+								if (!eat_word_v2(linePtr, alias_through_copy))
+								{
+									report_error(line, "missing alias location");
 									return false;
 								}
 							}
@@ -1214,6 +1236,8 @@ static bool process_chibi_file(const char * filename)
 						ChibiHeaderPath header_path;
 						header_path.path = full_path;
 						header_path.expose = expose;
+						if (alias_through_copy != nullptr)
+							header_path.alias_through_copy = alias_through_copy;
 						
 						s_currentLibrary->header_paths.push_back(header_path);
 					}
@@ -1466,7 +1490,9 @@ struct CMakeWriter
 				sb.AppendFormat("target_include_directories(%s %s \"%s\")\n",
 					library.name.c_str(),
 					visibility,
-					header_path.path.c_str());
+					header_path.alias_through_copy_path.empty() == false
+					? header_path.alias_through_copy_path.c_str()
+					: header_path.path.c_str());
 			}
 			
 			sb.Append("\n");
@@ -1849,6 +1875,13 @@ struct CMakeWriter
 		}
 		else
 		{
+			char generated_path[PATH_MAX];
+			if (!concat(generated_path, sizeof(generated_path), "${CMAKE_CURRENT_BINARY_DIR}/generated"))
+			{
+				report_error(nullptr, "failed to create abolsute path");
+				return false;
+			}
+			
 			{
 				StringBuilder sb;
 				
@@ -1905,6 +1938,51 @@ struct CMakeWriter
 					return false;
 			}
 		#endif
+		
+			{
+				// copy header files aliased through copy
+				
+				StringBuilder sb;
+				
+				sb.AppendFormat("# --- aliased header paths ---\n");
+				sb.Append("\n");
+				
+				for (auto & library : libraries)
+				{
+					for (auto & header_path : library->header_paths)
+					{
+						if (header_path.alias_through_copy.empty() == false)
+						{
+							char alias_path[PATH_MAX];
+							if (!concat(alias_path, sizeof(alias_path), generated_path, "/",
+							 	library->name.c_str()))
+							{
+								report_error(nullptr, "failed to create absolute path");
+								return false;
+							}
+							
+							char copy_path[PATH_MAX];
+							if (!concat(copy_path, sizeof(copy_path), alias_path, "/", header_path.alias_through_copy.c_str()))
+							{
+								report_error(nullptr, "failed to create absolute path");
+								return false;
+							}
+							
+							sb.AppendFormat("file(MAKE_DIRECTORY \"%s\")\n", copy_path);
+							
+							header_path.alias_through_copy_path = alias_path;
+							
+							sb.AppendFormat("file(COPY \"%s/\" DESTINATION \"%s\")\n",
+								header_path.path.c_str(),
+								copy_path);
+							sb.Append("\n");
+						}
+					}
+				}
+				
+				if (!output(f, sb))
+					return false;
+			}
 			
 			for (auto & library : libraries)
 			{
