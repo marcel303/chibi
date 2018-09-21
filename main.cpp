@@ -11,6 +11,7 @@
 
 // todo : add ability to generate for a single target, or through regex ?
 // todo : add "compile_definition DEBUG 1 config Debug config SlowDebug" to add compile definition for specific build types
+// todo : embed resources into app bundle for deployment target
 
 #ifdef _MSC_VER
 	#include <direct.h>
@@ -2086,10 +2087,42 @@ struct CMakeWriter
 				
 				if (!app->resource_path.empty())
 				{
-					sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\"%s\")\n",
-						app->name.c_str(),
-						app->resource_path.c_str());
-					sb.Append("\n");
+					if (s_platform == "macos" && true) // todo : check if we're building a deployment app bundle
+					{
+					// todo : use CMAKE_RUNTIME_OUTPUT_DIRECTORY instead of binary_dir + config ?
+						sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app->name.c_str());
+						
+						// use rsync to copy resources
+						
+						// but first make sure the target directory exists
+						
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Resources\"\n" \
+								"\tDEPENDS \"%s\")\n",
+							app->name.c_str(),
+							app->resource_path.c_str());
+						
+						// rsync
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND rsync -r \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\"\n" \
+								"\tDEPENDS \"%s\")\n",
+							app->name.c_str(),
+							app->resource_path.c_str(),
+							app->resource_path.c_str());
+							
+						sb.Append("\n");
+					}
+					else
+					{
+						sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\"%s\")\n",
+							app->name.c_str(),
+							app->resource_path.c_str());
+						sb.Append("\n");
+					}
 				}
 				
 				if (!write_header_paths(sb, *app))
