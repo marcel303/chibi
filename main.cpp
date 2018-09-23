@@ -11,7 +11,7 @@
 
 // todo : add ability to generate for a single target, or through regex ?
 // todo : add "compile_definition DEBUG 1 config Debug config SlowDebug" to add compile definition for specific build types
-// todo : embed resources into app bundle for deployment target
+// todo : add basic wildcard support ("include/*.cpp")
 
 #ifdef _MSC_VER
 	#include <direct.h>
@@ -300,6 +300,38 @@ static bool string_ends_with(const std::string & text, const std::string & subst
 	return true;
 }
 
+static bool match_wildcard(const char * text, const char * wildcard)
+{
+	while (wildcard[0] != 0)
+	{
+		if (wildcard[0] == '*')
+		{
+			if (wildcard[1] == 0)
+				return true;
+			else
+			{
+				while (text[0] != 0 && text[0] != wildcard[1])
+					text++;
+				
+				if (text[0] == 0)
+					return false;
+				
+				wildcard++;
+			}
+		}
+		else
+		{
+			if (text[0] != wildcard[0])
+				return false;
+			
+			text++;
+			wildcard++;
+		}
+	}
+	
+	return text[0] == 0;
+}
+
 struct ChibiLibraryFile
 {
 	std::string filename;
@@ -394,6 +426,8 @@ struct ChibiLibrary
 
 struct ChibiInfo
 {
+	std::set<std::string> build_targets;
+	
 	std::vector<ChibiLibrary*> libraries;
 	
 	bool library_exists(const char * name) const
@@ -414,6 +448,22 @@ struct ChibiInfo
 				return library;
 		
 		return nullptr;
+	}
+	
+	bool should_build_target(const char * name) const
+	{
+		if (build_targets.empty())
+			return true;
+		else if (build_targets.count(name) != 0)
+			return true;
+		else
+		{
+			for (auto & build_target : build_targets)
+				if (match_wildcard(name, build_target.c_str()))
+					return true;
+		}
+		
+		return false;
 	}
 	
 	void dump_info() const
@@ -1717,7 +1767,6 @@ struct CMakeWriter
 				
 				if (s_platform == "macos")
 				{
-				// todo : use CMAKE_RUNTIME_OUTPUT_DIRECTORY instead of binary_dir + config ?
 					sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app.name.c_str());
 					
 					if (string_ends_with(filename, ".framework"))
@@ -1837,8 +1886,7 @@ struct CMakeWriter
 			if (traversed_libraries.count(library->name) != 0)
 				continue;
 			
-			//if (true) // todo : check if we want to build this library or not
-			if (library->isExecutable)
+			if (library->isExecutable && s_chibiInfo.should_build_target(library->name.c_str()))
 			{
 				if (handle_library(*library, traversed_libraries, libraries) == false)
 					return false;
@@ -1850,8 +1898,11 @@ struct CMakeWriter
 			if (traversed_libraries.count(library->name) != 0)
 				continue;
 			
-			if (handle_library(*library, traversed_libraries, libraries) == false)
-				return false;
+			if (s_chibiInfo.should_build_target(library->name.c_str()))
+			{
+				if (handle_library(*library, traversed_libraries, libraries) == false)
+					return false;
+			}
 		}
 		
 		// sort files by name
@@ -2089,7 +2140,6 @@ struct CMakeWriter
 				{
 					if (s_platform == "macos" && true) // todo : check if we're building a deployment app bundle
 					{
-					// todo : use CMAKE_RUNTIME_OUTPUT_DIRECTORY instead of binary_dir + config ?
 						sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app->name.c_str());
 						
 						// use rsync to copy resources
@@ -2268,6 +2318,18 @@ int main(int argc, const char * argv[])
 			run_cmake = true;
 		else if (!strcmp(option, "-build"))
 			run_build = true;
+		else if (!strcmp(option, "-target"))
+		{
+			const char * target;
+			
+			if (!eat_arg(argc, argv, target))
+			{
+				report_error(nullptr, "missing target name: %s", option);
+				return -1;
+			}
+			
+			s_chibiInfo.build_targets.insert(target);
+		}
 		else
 		{
 			report_error(nullptr, "unknown command line option: %s", option);
