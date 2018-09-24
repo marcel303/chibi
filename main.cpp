@@ -2188,6 +2188,11 @@ struct CMakeWriter
 							app->resource_path.c_str());
 					
 						sb.Append("\n");
+						
+						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
+							app->name.c_str(),
+							app->resource_path.c_str());
+						sb.Append("\n");
 					}
 					else
 					{
