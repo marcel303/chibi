@@ -300,13 +300,20 @@ static bool string_ends_with(const std::string & text, const std::string & subst
 	return true;
 }
 
-static bool match_wildcard(const char * text, const char * wildcard)
+static bool match_wildcard(const char * in_text, const char * wildcard)
 {
+	const char * text = in_text;
+	
 	while (wildcard[0] != 0)
 	{
-		if (wildcard[0] == '*')
+		if (wildcard[0] == ';')
 		{
-			if (wildcard[1] == 0)
+			text = in_text;
+			wildcard++;
+		}
+		else if (wildcard[0] == '*')
+		{
+			if (wildcard[1] == 0 || wildcard[1] == ';')
 				return true;
 			else
 			{
@@ -322,10 +329,15 @@ static bool match_wildcard(const char * text, const char * wildcard)
 		else
 		{
 			if (text[0] != wildcard[0])
-				return false;
-			
-			text++;
-			wildcard++;
+			{
+				while (wildcard[0] != 0 && wildcard[0] != ';')
+					wildcard++;
+			}
+			else
+			{
+				text++;
+				wildcard++;
+			}
 		}
 	}
 	
@@ -1969,6 +1981,11 @@ struct CMakeWriter
 				sb.Append("set(SOURCE_GROUP_DELIMITER \"/\")\n");
 				sb.Append("\n");
 				
+				sb.Append("list(APPEND CMAKE_CONFIGURATION_TYPES Distribution)\n");
+				sb.Append("set(CMAKE_CXX_FLAGS_DISTRIBUTION ${CMAKE_CXX_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1)\n");
+				sb.Append("set(CMAKE_C_FLAGS_DISTRIBUTION ${CMAKE_C_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1)\n");
+				sb.Append("\n");
+				
 				if (!output(f, sb))
 					return false;
 			}
@@ -2138,7 +2155,7 @@ struct CMakeWriter
 				
 				if (!app->resource_path.empty())
 				{
-					if (s_platform == "macos" && true) // todo : check if we're building a deployment app bundle
+					if (s_platform == "macos")
 					{
 						sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app->name.c_str());
 						
@@ -2146,24 +2163,30 @@ struct CMakeWriter
 						
 						// but first make sure the target directory exists
 						
+						// note : we use a conditional to check if we're building a deployment app bundle
+						
+						const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
+						
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Resources\"\n" \
+								"\tCOMMAND %s ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Resources\"\n" \
 								"\tDEPENDS \"%s\")\n",
 							app->name.c_str(),
+							conditional,
 							app->resource_path.c_str());
 						
 						// rsync
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND rsync -r \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\"\n" \
+								"\tCOMMAND %s rsync -r \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\"\n" \
 								"\tDEPENDS \"%s\")\n",
 							app->name.c_str(),
+							conditional,
 							app->resource_path.c_str(),
 							app->resource_path.c_str());
-							
+					
 						sb.Append("\n");
 					}
 					else
