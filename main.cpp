@@ -390,6 +390,8 @@ struct ChibiCompileDefinition
 	bool expose = false;
 	
 	std::string toolchain;
+	
+	std::vector<std::string> configs;
 };
 
 struct ChibiLibrary
@@ -1316,6 +1318,7 @@ static bool process_chibi_file(const char * filename)
 					{
 						const char * name;
 						const char * value;
+						std::vector<std::string> configs;
 						
 						if (!eat_word_v2(linePtr, name))
 						{
@@ -1353,6 +1356,18 @@ static bool process_chibi_file(const char * filename)
 									return false;
 								}
 							}
+							else if (!strcmp(option, "config"))
+							{
+								const char * config;
+								
+								if (!eat_word_v2(linePtr, config))
+								{
+									report_error(line, "missing config name");
+									return false;
+								}
+								
+								configs.push_back(config);
+							}
 							else
 							{
 								report_error(line, "unknown option: %s", option);
@@ -1366,6 +1381,7 @@ static bool process_chibi_file(const char * filename)
 						compile_definition.value = value;
 						compile_definition.expose = expose;
 						compile_definition.toolchain = toolchain;
+						compile_definition.configs = configs;
 						
 						s_currentLibrary->compile_definitions.push_back(compile_definition);
 					}
@@ -1583,25 +1599,51 @@ struct CMakeWriter
 					? "PUBLIC"
 					: "PRIVATE";
 				
-				if (compile_definition.value.empty())
+				for (size_t config_index = 0; config_index == 0 || config_index < compile_definition.configs.size(); ++config_index)
 				{
-					sb.AppendFormat("target_compile_definitions(%s %s %s)\n",
-						library.name.c_str(),
-						visibility,
-						compile_definition.name.c_str());
-				}
-				else
-				{
-					sb.AppendFormat("target_compile_definitions(%s %s %s=%s)\n",
-						library.name.c_str(),
-						visibility,
-						compile_definition.name.c_str(),
-						compile_definition.value.c_str());
-				}
-				
-				if (toolchain != nullptr)
-				{
-					sb.AppendFormat("endif (%s)\n", toolchain);
+					char condition_begin[64];
+					char condition_end[64];
+					
+					if (compile_definition.configs.empty())
+					{
+						condition_begin[0] = 0;
+						condition_end[0] = 0;
+					}
+					else
+					{
+						if (!concat(condition_begin, sizeof(condition_begin), "$<$<CONFIG:", compile_definition.configs[config_index].c_str(), ">:"))
+						{
+							report_error(nullptr, "failed to create compile definition condition");
+							return false;
+						}
+						
+						strcpy(condition_end, ">");
+					}
+					
+					if (compile_definition.value.empty())
+					{
+						sb.AppendFormat("target_compile_definitions(%s %s %s%s%s)\n",
+							library.name.c_str(),
+							visibility,
+							condition_begin,
+							compile_definition.name.c_str(),
+							condition_end);
+					}
+					else
+					{
+						sb.AppendFormat("target_compile_definitions(%s %s %s%s=%s%s)\n",
+							library.name.c_str(),
+							visibility,
+							condition_begin,
+							compile_definition.name.c_str(),
+							compile_definition.value.c_str(),
+							condition_end);
+					}
+					
+					if (toolchain != nullptr)
+					{
+						sb.AppendFormat("endif (%s)\n", toolchain);
+					}
 				}
 			}
 			
