@@ -9,9 +9,8 @@
 #include <string>
 #include <vector>
 
-// todo : add ability to generate for a single target, or through regex ?
-// todo : add "compile_definition DEBUG 1 config Debug config SlowDebug" to add compile definition for specific build types
 // todo : add basic wildcard support ("include/*.cpp")
+// todo : copy generated dylibs into app bundle rpath on macos
 
 #ifdef _MSC_VER
 	#include <direct.h>
@@ -400,6 +399,8 @@ struct ChibiLibrary
 	std::string path;
 	std::string group_name;
 	
+	bool shared = false;
+	
 	bool isExecutable = false;
 	
 	std::vector<ChibiLibraryFile> files;
@@ -748,13 +749,30 @@ static bool process_chibi_file(const char * filename)
 					s_currentLibrary = nullptr;
 					
 					const char * name;
+					bool shared = false;
 					
 					if (!eat_word_v2(linePtr, name))
 					{
 						report_error(line, "missing name");
 						return false;
 					}
+					
+					for (;;)
+					{
+						const char * option;
 						
+						if (eat_word_v2(linePtr, option) == false)
+							break;
+						
+						if (!strcmp(option, "shared"))
+							shared = true;
+						else
+						{
+							report_error(line, "unknown option: %s", option);
+							return false;
+						}
+					}
+					
 					if (s_chibiInfo.library_exists(name))
 					{
 						report_error(line, "library already exists");
@@ -768,6 +786,8 @@ static bool process_chibi_file(const char * filename)
 					
 					if (s_currentGroup.empty() == false)
 						library->group_name = s_currentGroup;
+					
+					library->shared = shared;
 					
 					s_chibiInfo.libraries.push_back(library);
 					
@@ -2109,8 +2129,11 @@ struct CMakeWriter
 				
 				sb.Append("add_library(");
 				sb.Append(library->name.c_str());
-				sb.Append("\n\tSTATIC");
-				//sb.Append("\n\tSHARED");
+				
+				if (library->shared)
+					sb.Append("\n\tSHARED");
+				else
+					sb.Append("\n\tSTATIC");
 				
 				for (auto & file : library->files)
 				{
