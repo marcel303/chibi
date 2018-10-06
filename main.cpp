@@ -414,6 +414,7 @@ struct ChibiLibrary
 	std::vector<ChibiCompileDefinition> compile_definitions;
 	
 	std::string resource_path;
+	std::vector<std::string> resource_excludes;
 
 	std::vector<std::string> dist_files;
 	
@@ -1416,6 +1417,7 @@ static bool process_chibi_file(const char * filename)
 					else
 					{
 						const char * path;
+						std::vector<std::string> excludes;
 						
 						if (!eat_word_v2(linePtr, path))
 						{
@@ -1429,8 +1431,35 @@ static bool process_chibi_file(const char * filename)
 							report_error(line, "failed to create absolute path");
 							return false;
 						}
+
+						for (;;)
+						{
+							const char * option;
+							
+							if (!eat_word_v2(linePtr, option))
+								break;
+							
+							if (!strcmp(option, "exclude"))
+							{
+								const char * exclude;
+
+								if (!eat_word_v2(linePtr, exclude))
+								{
+									report_error(line, "missing exclude filename or pattern");
+									return false;
+								}
+
+								excludes.push_back(exclude);
+							}
+							else
+							{
+								report_error(line, "unknown option: %s", option);
+								return false;
+							}
+						}
 						
 						s_currentLibrary->resource_path = full_path;
+						s_currentLibrary->resource_excludes = excludes;
 					}
 				}
 				else if (eat_word(linePtr, "group"))
@@ -2241,14 +2270,27 @@ struct CMakeWriter
 							conditional,
 							app->resource_path.c_str());
 						
+						std::string exclude_args;
+
+						if (app->resource_excludes.empty() == false)
+						{
+							for (auto & exclude : app->resource_excludes)
+							{
+								exclude_args += "--exclude '";
+								exclude_args += exclude;
+								exclude_args += "' ";
+							}
+						}
+
 						// rsync
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND %s rsync -r \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\"\n" \
+								"\tCOMMAND %s rsync -r %s \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\"\n" \
 								"\tDEPENDS \"%s\")\n",
 							app->name.c_str(),
 							conditional,
+							exclude_args.c_str(),
 							app->resource_path.c_str(),
 							app->resource_path.c_str());
 					
