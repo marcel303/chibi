@@ -1,4 +1,5 @@
 #include "filesystem.h"
+#include <string.h>
 
 #ifdef WIN32
 	#include <Windows.h>

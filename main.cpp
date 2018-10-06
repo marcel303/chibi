@@ -7,6 +7,7 @@
 #include <set>
 #include <stdarg.h>
 #include <string>
+#include <string.h>
 #include <vector>
 
 // todo : add basic wildcard support ("include/*.cpp")
