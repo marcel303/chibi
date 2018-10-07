@@ -1779,6 +1779,24 @@ struct CMakeWriter
 		
 		return true;
 	}
+
+	static const char * get_package_dependency_output_name(const std::string & package_dependency)
+	{
+		/*
+		CMake find_package scripts do not always follow the convention of outputting
+		<package_name>_INCLUDE_DIRS and <package_name>_LIBRARIES. sometimes a script
+		will capitalize the package name or perhaps something more wild. for now I only
+		came across the FindFreetype.cmake script which doesn't stick to convention,
+		but since CMake in no way enforces the convention, other exceptions may exist.
+		in either case, we normalize known exceptions here since it's bad for automation
+		to have to deal with these exceptions..
+		*/
+
+		if (package_dependency == "Freetype")
+			return "FREETYPE";
+		else
+			return package_dependency.c_str();
+	}
 	
 	template <typename S>
 	static bool write_package_dependencies(S & sb, const ChibiLibrary & library)
@@ -1796,7 +1814,7 @@ struct CMakeWriter
 				sb.AppendFormat("target_include_directories(%s PRIVATE %s \"${%s_INCLUDE_DIRS}\")\n",
 					library.name.c_str(),
 					library.path.c_str(),
-					package_dependency.c_str());
+					get_package_dependency_output_name(package_dependency));
 			}
 			sb.Append("\n");
 			
@@ -1804,7 +1822,7 @@ struct CMakeWriter
 			{
 				sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
 					library.name.c_str(),
-					package_dependency.c_str());
+					get_package_dependency_output_name(package_dependency));
 			}
 			sb.Append("\n");
 		}
