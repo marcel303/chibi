@@ -497,6 +497,7 @@ static ChibiInfo s_chibiInfo;
 static ChibiLibrary * s_currentLibrary = nullptr;
 
 static std::string s_platform;
+static std::string s_platform_full;
 
 static std::vector<std::string> s_cmake_module_paths;
 
@@ -563,6 +564,16 @@ struct StringBuilder
 		Append(text);
 	}
 };
+
+static bool is_platform(const char * platform)
+{
+	if (s_platform == platform)
+		return true;
+	else if (s_platform_full.empty() == false && s_platform_full == platform)
+		return true;
+	else
+		return false;
+}
 
 static bool write_if_different(const char * text, const char * filename)
 {
@@ -673,7 +684,7 @@ static bool process_chibi_file(const char * filename)
 						return false;
 					}
 					
-					if (platform != s_platform)
+					if (is_platform(platform) == false)
 						continue;
 				}
 				
@@ -2530,7 +2541,41 @@ int main(int argc, const char * argv[])
 #else
 	#error unknown platform
 #endif
-	
+
+#if defined(LINUX)
+	{
+		bool isRaspberryPi = false;
+		
+		FILE * f = fopen("/proc/device-tree/model", "rt");
+		
+		if (f != nullptr)
+		{
+			char * line = nullptr;
+			size_t lineSize = 0;
+			
+			const ssize_t r = getline(&line, &lineSize, f);
+			
+			if (r >= 0)
+			{
+				if (strstr(line, "Raspberry Pi") != nullptr)
+					isRaspberryPi = true;
+			}
+			
+			if (line != nullptr)
+			{
+				free(line);
+				line = nullptr;
+			}
+			
+			fclose(f);
+			f = nullptr;
+		}
+		
+		if (isRaspberryPi)
+			s_platform_full = "linux.raspberry-pi";
+	}
+#endif
+
 	// recursively find build_root
 	
 	char current_path[PATH_MAX];
