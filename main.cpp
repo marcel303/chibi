@@ -2176,6 +2176,15 @@ struct CMakeWriter
 				sb.Append("set(CMAKE_CXX_FLAGS_DISTRIBUTION ${CMAKE_CXX_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1)\n");
 				sb.Append("set(CMAKE_C_FLAGS_DISTRIBUTION ${CMAKE_C_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1)\n");
 				sb.Append("\n");
+
+				if (is_platform("linux.raspberry-pi"))
+				{
+					sb.Append("add_compile_options(-mcpu=cortex-a53)\n");
+					sb.Append("add_compile_options(-mfpu=neon-fp-armv8)\n");
+					sb.Append("add_compile_options(-mfloat-abi=hard)\n");
+					sb.Append("add_compile_options(-funsafe-math-optimizations)\n");
+					sb.Append("\n");
+				}
 				
 				if (!output(f, sb))
 					return false;
