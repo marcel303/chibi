@@ -10,6 +10,8 @@
 #include <string.h>
 #include <vector>
 
+#define ENABLE_PKGCONFIG 0 // todo : pkgconfig shouldn't be used in chibi.txt files. but it would be nice to define libraries using pkgconfig externally, as a sort of aliases, which can be used in a normalized fashion as a regular library
+
 // todo : add basic wildcard support ("include/*.cpp")
 // todo : copy generated dylibs into app bundle rpath on macos
 
@@ -378,7 +380,9 @@ struct ChibiPackageDependency
 	{
 		kType_Undefined,
 		kType_FindPackage,
+	#if ENABLE_PKGCONFIG
 		kType_PkgConfig
+	#endif
 	};
 	
 	std::string name;
@@ -1221,9 +1225,11 @@ static bool process_chibi_file(const char * filename)
 							if (!eat_word_v2(linePtr, option))
 								break;
 							
+						#if ENABLE_PKGCONFIG
 							if (!strcmp(option, "pkgconfig"))
 								type = ChibiPackageDependency::kType_PkgConfig;
 							else
+						#endif
 							{
 								report_error(line, "unknown option: %s", option);
 								return false;
@@ -1851,6 +1857,7 @@ struct CMakeWriter
 				}
 			}
 			
+		#if ENABLE_PKGCONFIG
 			for (auto & package_dependency : library.package_dependencies)
 			{
 				if (package_dependency.type == ChibiPackageDependency::kType_PkgConfig)
@@ -1860,6 +1867,8 @@ struct CMakeWriter
 						package_dependency.name.c_str());
 				}
 			}
+		#endif
+		
 			sb.Append("\n");
 			
 			for (auto & package_dependency : library.package_dependencies)
@@ -1870,12 +1879,14 @@ struct CMakeWriter
 						library.name.c_str(),
 						get_package_dependency_output_name(package_dependency.name));
 				}
+			#if ENABLE_PKGCONFIG
 				else if (package_dependency.type == ChibiPackageDependency::kType_PkgConfig)
 				{
 					sb.AppendFormat("target_include_directories(%s PRIVATE \"${%s_INCLUDE_DIRS}\")\n",
 						library.name.c_str(),
 						package_dependency.variable_name.c_str());
 				}
+			#endif
 			}
 			sb.Append("\n");
 			
@@ -1887,12 +1898,14 @@ struct CMakeWriter
 						library.name.c_str(),
 						get_package_dependency_output_name(package_dependency.name));
 				}
+			#if ENABLE_PKGCONFIG
 				else if (package_dependency.type == ChibiPackageDependency::kType_PkgConfig)
 				{
 					sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
 						library.name.c_str(),
 						package_dependency.variable_name.c_str());
 				}
+			#endif
 			}
 			sb.Append("\n");
 		}
@@ -2155,6 +2168,7 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
+			// todo : also linux
 				sb.Append("if (APPLE)\n");
 				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
 				sb.Append("endif (APPLE)\n");
@@ -2177,6 +2191,7 @@ struct CMakeWriter
 				sb.Append("set(CMAKE_C_FLAGS_DISTRIBUTION ${CMAKE_C_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1)\n");
 				sb.Append("\n");
 
+			// todo : global compile options should be user-defined
 				if (is_platform("linux.raspberry-pi"))
 				{
 					sb.Append("add_compile_options(-mcpu=cortex-a53)\n");
