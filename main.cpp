@@ -372,6 +372,21 @@ struct ChibiLibraryDependency
 	bool embed_framework = false;
 };
 
+struct ChibiPackageDependency
+{
+	enum Type
+	{
+		kType_Undefined,
+		kType_FindPackage,
+		kType_PkgConfig
+	};
+	
+	std::string name;
+	std::string variable_name;
+	
+	Type type = kType_Undefined;
+};
+
 struct ChibiHeaderPath
 {
 	std::string path;
@@ -408,7 +423,7 @@ struct ChibiLibrary
 	
 	std::vector<ChibiLibraryDependency> library_dependencies;
 	
-	std::vector<std::string> package_dependencies;
+	std::vector<ChibiPackageDependency> package_dependencies;
 	
 	std::vector<ChibiHeaderPath> header_paths;
 	
@@ -1191,6 +1206,7 @@ static bool process_chibi_file(const char * filename)
 					else
 					{
 						const char * name;
+						ChibiPackageDependency::Type type = ChibiPackageDependency::kType_FindPackage;
 						
 						if (!eat_word_v2(linePtr, name))
 						{
@@ -1198,7 +1214,31 @@ static bool process_chibi_file(const char * filename)
 							return false;
 						}
 						
-						s_currentLibrary->package_dependencies.push_back(name);
+						for (;;)
+						{
+							const char * option;
+							
+							if (!eat_word_v2(linePtr, option))
+								break;
+							
+							if (!strcmp(option, "pkgconfig"))
+								type = ChibiPackageDependency::kType_PkgConfig;
+							else
+							{
+								report_error(line, "unknown option: %s", option);
+								return false;
+							}
+						}
+						
+						ChibiPackageDependency package_dependency;
+						package_dependency.name = name;
+						package_dependency.variable_name = name;
+						package_dependency.type = type;
+						
+						std::replace(package_dependency.variable_name.begin(), package_dependency.variable_name.end(), '-', '_');
+						std::replace(package_dependency.variable_name.begin(), package_dependency.variable_name.end(), '.', '_');
+						
+						s_currentLibrary->package_dependencies.push_back(package_dependency);
 					}
 				}
 				else if (eat_word(linePtr, "depend_library"))
@@ -1805,24 +1845,54 @@ struct CMakeWriter
 		{
 			for (auto & package_dependency : library.package_dependencies)
 			{
-				sb.AppendFormat("find_package(%s REQUIRED)\n", package_dependency.c_str());
+				if (package_dependency.type == ChibiPackageDependency::kType_FindPackage)
+				{
+					sb.AppendFormat("find_package(%s REQUIRED)\n", package_dependency.name.c_str());
+				}
+			}
+			
+			for (auto & package_dependency : library.package_dependencies)
+			{
+				if (package_dependency.type == ChibiPackageDependency::kType_PkgConfig)
+				{
+					sb.AppendFormat("pkg_check_modules(%s REQUIRED %s)\n",
+						package_dependency.variable_name.c_str(),
+						package_dependency.name.c_str());
+				}
 			}
 			sb.Append("\n");
 			
 			for (auto & package_dependency : library.package_dependencies)
 			{
-				sb.AppendFormat("target_include_directories(%s PRIVATE %s \"${%s_INCLUDE_DIRS}\")\n",
-					library.name.c_str(),
-					library.path.c_str(),
-					get_package_dependency_output_name(package_dependency));
+				if (package_dependency.type == ChibiPackageDependency::kType_FindPackage)
+				{
+					sb.AppendFormat("target_include_directories(%s PRIVATE \"${%s_INCLUDE_DIRS}\")\n",
+						library.name.c_str(),
+						get_package_dependency_output_name(package_dependency.name));
+				}
+				else if (package_dependency.type == ChibiPackageDependency::kType_PkgConfig)
+				{
+					sb.AppendFormat("target_include_directories(%s PRIVATE \"${%s_INCLUDE_DIRS}\")\n",
+						library.name.c_str(),
+						package_dependency.variable_name.c_str());
+				}
 			}
 			sb.Append("\n");
 			
 			for (auto & package_dependency : library.package_dependencies)
 			{
-				sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
-					library.name.c_str(),
-					get_package_dependency_output_name(package_dependency));
+				if (package_dependency.type == ChibiPackageDependency::kType_FindPackage)
+				{
+					sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
+						library.name.c_str(),
+						get_package_dependency_output_name(package_dependency.name));
+				}
+				else if (package_dependency.type == ChibiPackageDependency::kType_PkgConfig)
+				{
+					sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
+						library.name.c_str(),
+						package_dependency.variable_name.c_str());
+				}
 			}
 			sb.Append("\n");
 		}
