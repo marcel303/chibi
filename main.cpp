@@ -1030,10 +1030,20 @@ static bool process_chibi_file(const char * filename)
 						
 						auto filenames = listFiles(search_path, traverse);
 						
+						const bool is_wildcard = strchr(extension, '*') != nullptr;
+						
 						auto end = std::remove_if(filenames.begin(), filenames.end(), [&](const std::string & filename) -> bool
 							{
-								if (get_path_extension(filename, true) != extension)
-									return true;
+								if (is_wildcard)
+								{
+									if (match_wildcard(filename.c_str(), extension) == false)
+										return true;
+								}
+								else
+								{
+									if (get_path_extension(filename, true) != extension)
+										return true;
+								}
 							
 								if (platform != nullptr && platform != s_platform)
 									return true;
