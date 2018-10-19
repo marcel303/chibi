@@ -112,10 +112,24 @@ static bool eat_word_v2(char *& line, const char *& word)
 	if (*line == 0)
 		return false;
 	
-	word = line;
-	
-	while (*line != 0 && is_whitespace(*line) == false)
+	const bool isQuoted = *line == '"';
+
+	if (isQuoted)
+	{
 		line++;
+
+		word = line;
+		
+		while (*line != 0 && *line != '"')
+			line++;
+	}
+	else
+	{
+		word = line;
+		
+		while (*line != 0 && is_whitespace(*line) == false)
+			line++;
+	}
 	
 	if (line > word)
 	{
@@ -344,6 +358,16 @@ static bool match_wildcard(const char * in_text, const char * wildcard)
 	}
 	
 	return text[0] == 0;
+}
+
+static bool is_absolute_path(const char * path)
+{
+#if MACOS || LINUX
+	return path[0] == '/';
+#else
+	// todo : detect absolute Windows path
+	return false;
+#endif
 }
 
 struct ChibiLibraryFile
@@ -1494,10 +1518,22 @@ static bool process_chibi_file(const char * filename)
 						}
 						
 						char full_path[PATH_MAX];
-						if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
+
+						if (is_absolute_path(path))
 						{
-							report_error(line, "failed to create absolute path");
-							return false;
+							if (!copy_string(full_path, sizeof(full_path), path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+						else
+						{
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
 						}
 
 						for (;;)
