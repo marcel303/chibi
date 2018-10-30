@@ -674,6 +674,42 @@ static bool write_if_different(const char * text, const char * filename)
 	}
 }
 
+static void show_chibi_cli()
+{
+	printf("usage: chibi <source_path> <destination_path> [-target <wildcard>]\n");
+	printf("\t<source_path> the path where to begin looking for the chibi root file\n");
+	printf("\t<destination_path> the path where to output the generated cmake file\n");
+	printf("\t-target sets an optional filter for the <app_name> or <library_name> to limit the scope of the generated cmake file to build only the specific target(s). <wildcard> may specify either the complete target name or a wildcard. when used more than once, multiple targets can be set\n");
+}
+
+static void show_syntax_elem(const char * format, const char * description)
+{
+	printf("%s\n\t%s\n", format, description);
+}
+
+static void show_chibi_syntax()
+{	
+	printf("chibi syntax (global):\n");
+	show_syntax_elem("app <app_name>", "adds an app target with the given name");
+	show_syntax_elem("cmake_module_path <path>", "adds a cmake module path");
+	show_syntax_elem("library <library_name> [shared]", "adds a library target with the given name");
+	show_syntax_elem("with_platform <platform_name>", "with_platform may be specified in front of every line. when set, lines are filtered based on whether the current platform name matched the given platform name");
+	
+	printf("\n");
+	printf("chibi syntax (within app or library context):\n");
+	show_syntax_elem("add_dist_files <file>..", "adds one or more files to to be bundled with the application, when the build type is set to distribution");
+	show_syntax_elem("add_files <file>..", "adds one or more files to compile");
+	show_syntax_elem("compile_definition <name> <value> [expose]", "adds a compile definition. when <value> is set to *, the compile definition is merely defined, without a value. when <expose> is set, the compile_definition is visible to all targets that depends on the current target");
+	show_syntax_elem("depend_library <library_name> [local | find]", "adds a target dependency. <library_name> may refer to a chibi library target, or to a pre-built library or system library. when [local] is set, the file is interpreted as a pre-built library to be found at the given location, relative to the current chibi file. when [find] is set, the library will be searched for on the system");
+	show_syntax_elem("depend_package <package_name>", "depends on a package, to be found using one of cmake's find_package scripts. <package_name> defines the name of the cmake package script");
+	show_syntax_elem("exclude_files <file>..", "exclude one or more files added before using add_files or scan_files");
+	show_syntax_elem("group <group_name>", "specify the group for files to be added subsequently using add_files or scan_files");
+	show_syntax_elem("header_path <path> [expose]", "specify a header search path. when [expose] is set, the search path will be propagated to all dependent targets");
+	show_syntax_elem("resource_path <path>", "specify the resource_path. CHIBI_RESOURCE_PATH will be set appropriately to the given path for debug and release builds. for the distribution build type, files located at resource_path will be bundled with the app and CHIBI_RESOURCE_PATH will be set to the relative search path within the bundle");
+	show_syntax_elem("scan_files <extension_or_wildcard> [path <path>].. [traverse] [group <group_name>] [conglomerate <conglomerate_file>]", "adds files by scanning the given path or the path of the current chibi file. files will be filtered using the extension or wildcard pattern provided. [path] can be used to specify a specific folder to look inside. [traverse] may be set to recursively look for files down the directory hierarchy. when [group] is specified, files found through the scan operation will be grouped by this name in generated ide project files. when [conglomerate] is set, the files will be concatenated into this files, and the generated file will be added instead. [conglomerate] may be used to speed up compile times by compiling a set of files in one go");
+	
+}
+
 static bool process_chibi_file(const char * filename)
 {
 	s_currentLibrary = nullptr;
@@ -2600,13 +2636,20 @@ int main(int argc, const char * argv[])
 	argc -= 1;
 	argv += 1;
 	
-	if (!eat_arg(argc, argv, src_path))
+	if (argc == 0)
+	{
+		show_chibi_cli();
+		printf("\n");
+		
+		show_chibi_syntax();
+		return -1;
+	}
+	else if (!eat_arg(argc, argv, src_path))
 	{
 		report_error(nullptr, "missing source path");
 		return -1;
 	}
-	
-	if (!eat_arg(argc, argv, dst_path))
+	else if (!eat_arg(argc, argv, dst_path))
 	{
 		report_error(nullptr, "missing destination path");
 		return -1;
