@@ -2535,6 +2535,21 @@ struct CMakeWriter
 				if (s_platform == "windows")
 					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \"/SAFESEH:NO\")", app->name.c_str());
 
+				if (s_platform == "macos")
+				{
+					// add rpath to the generated executable so that it can find dylibs inside the location of the executable itself. this is needed when copying generated shared libraries into the app bundle
+					
+					const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
+				
+					sb.AppendFormat(
+						"add_custom_command(\n" \
+							"\tTARGET %s POST_BUILD\n" \
+							"\tCOMMAND %s install_name_tool -add_rpath \"@executable_path\" \"${BUNDLE_PATH}/Contents/MacOS/%s\")\n",
+						app->name.c_str(),
+						conditional,
+						app->name.c_str());
+				}
+				
 				if (!output(f, sb))
 					return false;
 			}
