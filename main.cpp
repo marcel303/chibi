@@ -2134,14 +2134,14 @@ struct CMakeWriter
 				{
 					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
 					
-						const char * filename;
-					
-						auto i = dist_file.find_last_of('/');
-					
-						if (i == std::string::npos)
-							filename = dist_file.c_str();
-						else
-							filename = &dist_file[i + 1];
+					const char * filename;
+				
+					auto i = dist_file.find_last_of('/');
+				
+					if (i == std::string::npos)
+						filename = dist_file.c_str();
+					else
+						filename = &dist_file[i + 1];
 					
 					sb.AppendFormat(
 						"add_custom_command(\n" \
@@ -2152,6 +2152,29 @@ struct CMakeWriter
 						dist_file.c_str(),
 						filename,
 						dist_file.c_str());
+				}
+				
+				if (library->shared)
+				{
+				// todo : skip this step when creating a non-distribution build ?
+				// todo : when this step is skipped for non-distribution, perhaps may want to skip copying frameworks too ..
+				
+					// copy generated shared object files into a place where the executable can find it
+					
+					if (s_platform == "macos")
+					{
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${BUNDLE_PATH}/Contents/MacOS/$<TARGET_FILE_NAME:%s>\"\n" \
+								"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
+							app.name.c_str(),
+							library_dependency.name.c_str(),
+							library_dependency.name.c_str(),
+							library_dependency.name.c_str());
+					}
+					
+					// todo : also copy generated (dll) files on Windows (?)
 				}
 			}
 		}
@@ -2534,7 +2557,7 @@ struct CMakeWriter
 			// todo : let libraries and apps add target properties
 				if (s_platform == "windows")
 					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \"/SAFESEH:NO\")", app->name.c_str());
-
+				
 				if (s_platform == "macos")
 				{
 					// add rpath to the generated executable so that it can find dylibs inside the location of the executable itself. this is needed when copying generated shared libraries into the app bundle
