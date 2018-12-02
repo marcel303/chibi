@@ -2564,12 +2564,16 @@ struct CMakeWriter
 					
 					const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
 				
+				// fixme : cmake is broken and always runs the custom command, regardless of whether the DEPENDS target is dirty or not. this causes install_name_tool to fail, as the rpath has already been set. I've appended "|| true" at the end of the command, to effectively ignore the return code from install_name_tool. a nasty side effect of this is we don't know whether the command succeeded or actually failed for some valid reason.. so ideally this hack is removed once cmake's behavior is fixed
+				
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s install_name_tool -add_rpath \"@executable_path\" \"${BUNDLE_PATH}/Contents/MacOS/%s\")\n",
+							"\tCOMMAND %s install_name_tool -add_rpath \"@executable_path\" \"${BUNDLE_PATH}/Contents/MacOS/%s\" || true\n" \
+							"\tDEPENDS %s)\n",
 						app->name.c_str(),
 						conditional,
+						app->name.c_str(),
 						app->name.c_str());
 				}
 				
