@@ -2292,8 +2292,8 @@ struct CMakeWriter
 				sb.Append("\n");
 				
 				sb.Append("list(APPEND CMAKE_CONFIGURATION_TYPES Distribution)\n");
-				sb.Append("set(CMAKE_CXX_FLAGS_DISTRIBUTION ${CMAKE_CXX_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1)\n");
-				sb.Append("set(CMAKE_C_FLAGS_DISTRIBUTION ${CMAKE_C_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1)\n");
+				sb.Append("set(CMAKE_CXX_FLAGS_DISTRIBUTION \"${CMAKE_CXX_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1\")\n");
+				sb.Append("set(CMAKE_C_FLAGS_DISTRIBUTION \"${CMAKE_C_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1\")\n");
 				sb.Append("\n");
 
 			// todo : global compile options should be user-defined
