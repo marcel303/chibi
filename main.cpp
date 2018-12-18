@@ -10,10 +10,15 @@
 #include <string.h>
 #include <vector>
 
+/*
+brew install ccache
+*/
+
 #define ENABLE_PKGCONFIG 0 // todo : pkgconfig shouldn't be used in chibi.txt files. but it would be nice to define libraries using pkgconfig externally, as a sort of aliases, which can be used in a normalized fashion as a regular library
 
 // todo : add basic wildcard support ("include/*.cpp")
 // todo : copy generated dylibs into app bundle rpath on macos
+// todo : create library targets which are an alias for an existing system library, such as libusb, libsdl2, etc -> will allow to normalize library names, and to use either the system version or compile from source version interchangable
 
 #ifdef _MSC_VER
 	#include <direct.h>
@@ -2273,6 +2278,22 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
+				/*
+				note : one of chibi's aims is to work well with modern Git-like workflows. in these
+				workflows, switching branches is common. one of the downsides of switching branches
+				(when using c++) are the increased build times as branch switches often invalidate
+				a lot of object files at once. we include here support for 'ccache' for all chibi
+				build targets by default, to make recompiles after switching branches faster. ccache,
+				which stand for 'compiler cache' sits between the build system and the compiler. it
+				acts as a proxy, which will produce object files from cache when possible, or forwards
+				the actual compilation to the compiler when it doesn't have a cached version available
+				*/
+				sb.Append("find_program(CCACHE_PROGRAM ccache)\n");
+				sb.Append("if (CCACHE_PROGRAM)\n");
+				sb.Append("\tset_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE \"${CCACHE_PROGRAM}\")\n");
+				sb.Append("endif (CCACHE_PROGRAM)\n");
+				sb.Append("\n");
+				
 			// todo : also linux
 				sb.Append("if (APPLE)\n");
 				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
@@ -2288,9 +2309,14 @@ struct CMakeWriter
 				sb.Append("endif ()\n");
 				sb.Append("\n");
 				
+				// normalize the group delimiter to be '/'
 				sb.Append("set(SOURCE_GROUP_DELIMITER \"/\")\n");
 				sb.Append("\n");
 				
+				// add a 'Distribution' build type. this build type is used for making
+				// 'final' builds of an app. on Macos for instance, it creates a self-
+				// contained app bundle, including all of the dylibs, frameworks and
+				// resources referenced by the app
 				sb.Append("list(APPEND CMAKE_CONFIGURATION_TYPES Distribution)\n");
 				sb.Append("set(CMAKE_CXX_FLAGS_DISTRIBUTION \"${CMAKE_CXX_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1\")\n");
 				sb.Append("set(CMAKE_C_FLAGS_DISTRIBUTION \"${CMAKE_C_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1\")\n");
