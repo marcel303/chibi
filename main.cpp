@@ -2305,7 +2305,7 @@ struct CMakeWriter
 
 				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND NOT CMAKE_CL_64)\n");
 				sb.Append("\tadd_compile_options(/arch:SSE2)\n");
-				sb.Append("\tadd_definitions(-D__SSE2__=1)\n");
+				sb.Append("\tadd_definitions(-D__SSE2__)\n");
 				sb.Append("endif ()\n");
 				sb.Append("\n");
 				
@@ -2321,6 +2321,7 @@ struct CMakeWriter
 				sb.Append("set(CMAKE_CXX_FLAGS_DISTRIBUTION \"${CMAKE_CXX_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1\")\n");
 				sb.Append("set(CMAKE_C_FLAGS_DISTRIBUTION \"${CMAKE_C_FLAGS_RELEASE} -DCHIBI_BUILD_DISTRIBUTION=1\")\n");
 				sb.Append("set(CMAKE_EXE_LINKER_FLAGS_DISTRIBUTION \"${CMAKE_EXE_LINKER_FLAGS_RELEASE}\")\n");
+				sb.Append("set(CMAKE_SHARED_LINKER_FLAGS_DISTRIBUTION \"${CMAKE_SHARED_LINKER_FLAGS_RELEASE}\")\n");
 				sb.Append("\n");
 
 			// todo : global compile options should be user-defined
@@ -2470,6 +2471,15 @@ struct CMakeWriter
 				if (!write_package_dependencies(sb, *library))
 					return false;
 				
+				if (s_platform == "windows")
+				{
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \" /SAFESEH:NO\")\n", library->name.c_str());
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY COMPILE_FLAGS \" /wd4244\")\n", library->name.c_str()); // disable 'conversion from type A to B, possible loss of data' warning
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY COMPILE_FLAGS \" /wd4018\")\n", library->name.c_str()); // disable 'signed/unsigned mismatch' warning
+					
+					sb.Append("\n");
+				}
+				
 				if (!output(f, sb))
 					return false;
 			}
@@ -2583,7 +2593,13 @@ struct CMakeWriter
 				
 			// todo : let libraries and apps add target properties
 				if (s_platform == "windows")
-					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \"/SAFESEH:NO\")", app->name.c_str());
+				{
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \" /SAFESEH:NO\")\n", app->name.c_str());
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY COMPILE_FLAGS \" /wd4244\")\n", app->name.c_str()); // disable 'conversion from type A to B, possible loss of data' warning
+					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY COMPILE_FLAGS \" /wd4018\")\n", app->name.c_str()); // disable 'signed/unsigned mismatch' warning
+					
+					sb.Append("\n");
+				}
 				
 				if (s_platform == "macos")
 				{
@@ -2602,6 +2618,8 @@ struct CMakeWriter
 						conditional,
 						app->name.c_str(),
 						app->name.c_str());
+					
+					sb.Append("\n");
 				}
 				
 				if (!output(f, sb))
