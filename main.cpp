@@ -2168,6 +2168,8 @@ struct CMakeWriter
 					
 					if (s_platform == "macos")
 					{
+						sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app.name.c_str());
+						
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
