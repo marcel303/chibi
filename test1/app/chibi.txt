@@ -1,5 +1,0 @@
-app test1
-	add_files main.cpp
-	depend_library repo1
-	depend_library repo2
-	resource_path data

@@ -1,5 +1,0 @@
-library repo2
-	scan_files cpp traverse
-	scan_files h traverse
-	depend_library repo1
-	header_path . expose
