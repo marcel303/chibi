@@ -832,7 +832,7 @@ static bool process_chibi_file(const char * filename)
 					{
 						char chibi_file[PATH_MAX];
 						
-						if (!concat(chibi_file, sizeof(chibi_file), chibi_path, "/", location, "/chibi_root"))
+						if (!concat(chibi_file, sizeof(chibi_file), chibi_path, "/", location, "/chibi-root.txt"))
 							return false;
 						
 						const int length = s_current_line_length;
@@ -2602,7 +2602,7 @@ struct CMakeWriter
 					
 					sb.Append("\n");
 				}
-				
+
 				if (s_platform == "macos")
 				{
 					// add rpath to the generated executable so that it can find dylibs inside the location of the executable itself. this is needed when copying generated shared libraries into the app bundle
@@ -2881,7 +2881,7 @@ int main(int argc, const char * argv[])
 	for (;;)
 	{
 		char root_path[PATH_MAX];
-		if (!concat(root_path, sizeof(root_path), current_path, "/chibi_root"))
+		if (!concat(root_path, sizeof(root_path), current_path, "/chibi-root.txt"))
 		{
 			report_error(nullptr, "failed to create absolute path");
 			return -1;
@@ -2906,7 +2906,7 @@ int main(int argc, const char * argv[])
 	
 	if (build_root[0] == 0)
 	{
-		report_error(nullptr, "failed to find chibi_root file");
+		report_error(nullptr, "failed to find chibi-root.txt file");
 		return -1;
 	}
 	
