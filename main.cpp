@@ -465,6 +465,7 @@ struct ChibiLibrary
 	std::string name;
 	std::string path;
 	std::string group_name;
+	std::string chibi_file;
 	
 	bool shared = false;
 	
@@ -903,6 +904,7 @@ static bool process_chibi_file(const char * filename)
 					
 					library->name = name;
 					library->path = chibi_path;
+					library->chibi_file = s_currentFile.back();
 					
 					if (s_currentGroup.empty() == false)
 						library->group_name = s_currentGroup.back();
@@ -935,6 +937,7 @@ static bool process_chibi_file(const char * filename)
 					
 					library->name = name;
 					library->path = chibi_path;
+					library->chibi_file = s_currentFile.back();
 					
 					if (s_currentGroup.empty() == false)
 						library->group_name = s_currentGroup.back();
@@ -2454,6 +2457,14 @@ struct CMakeWriter
 					if (file.compile == false)
 						has_compile_disabled_files = true;
 				}
+
+				if (true)
+				{
+					// add chibi file to target
+
+					sb.Append("\n\t");
+					sb.AppendFormat("\"%s\"", library->chibi_file.c_str());
+				}
 				
 				sb.Append(")\n");
 				sb.Append("\n");
@@ -2526,6 +2537,14 @@ struct CMakeWriter
 				{
 					sb.Append("\n\t");
 					sb.AppendFormat("\"%s\"", file.filename.c_str());
+				}
+
+				if (true)
+				{
+					// add chibi file to target
+					
+					sb.Append("\n\t");
+					sb.AppendFormat("\"%s\"", app->chibi_file.c_str());
 				}
 				
 				sb.Append(")\n");
@@ -2952,6 +2971,13 @@ int main(int argc, const char * argv[])
 	if (!process_chibi_file(build_root))
 	{
 		report_error(nullptr, "an error occured while scanning for chibi files");
+		return -1;
+	}
+
+	if (s_currentGroup.empty() == false)
+	{
+		// todo : detect missing pop_group within the scope of a chibi file
+		report_error(nullptr, "missing one or more 'pop_group'");
 		return -1;
 	}
 	
