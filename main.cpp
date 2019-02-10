@@ -166,14 +166,15 @@ static bool eat_word(char *& line, const char * word)
 		
 		index++;
 	}
-	
-	if (is_whitespace(line[index]) == false)
+
+	if (is_whitespace(line[index]) == false && line[index] != 0)
 		return false;
-	else
-	{
-		line += index;
-		return true;
-	}
+
+	while (is_whitespace(line[index]))
+			index++;
+
+	line += index;
+	return true;
 }
 
 static bool do_concat(char *& dst, int & dstSize, const char * s)
@@ -211,6 +212,21 @@ static bool copy_string(char * dst, int dstSize, const char * s)
 	return concat(dst, dstSize, s);
 }
 
+static std::vector<std::string> s_currentFile;
+
+struct ChibiFileScope
+{
+	ChibiFileScope(const char * filename)
+	{
+		s_currentFile.push_back(filename);
+	}
+
+	~ChibiFileScope()
+	{
+		s_currentFile.pop_back();
+	}
+};
+
 static void report_error(const char * line, const char * format, ...)
 {
 	char text[1024];
@@ -247,6 +263,8 @@ static void report_error(const char * line, const char * format, ...)
 	//
 	
 	printf("error: %s\n", text);
+	if (!s_currentFile.empty())
+		printf("in file: %s\n", s_currentFile.back().c_str());
 }
 
 static bool get_path_from_filename(const char * filename, char * path, int pathSize)
@@ -549,7 +567,7 @@ static std::string s_platform_full;
 
 static std::vector<std::string> s_cmake_module_paths;
 
-static std::string s_currentGroup;
+static std::vector<std::string> s_currentGroup;
 
 struct FileHandle
 {
@@ -717,6 +735,8 @@ static void show_chibi_syntax()
 
 static bool process_chibi_file(const char * filename)
 {
+	ChibiFileScope chibi_scope(filename);
+
 	s_currentLibrary = nullptr;
 	
 	char chibi_path[PATH_MAX];
@@ -791,7 +811,6 @@ static bool process_chibi_file(const char * filename)
 							return false;
 						
 						const int length = s_current_line_length;
-						const std::string group = s_currentGroup;
 						
 						if (!process_chibi_file(chibi_file))
 							return false;
@@ -799,10 +818,9 @@ static bool process_chibi_file(const char * filename)
 						s_currentLibrary = nullptr;
 						
 						s_current_line_length = length;
-						s_currentGroup = group;
 					}
 				}
-				else if (eat_word(linePtr, "global_group"))
+				else if (eat_word(linePtr, "push_group"))
 				{
 					const char * name;
 					
@@ -812,12 +830,17 @@ static bool process_chibi_file(const char * filename)
 						return false;
 					}
 					
-					s_currentGroup = name;
-					
-					if (s_currentLibrary != nullptr)
+					s_currentGroup.push_back(name);
+				}
+				else if (eat_word(linePtr, "pop_group"))
+				{
+					if (s_currentGroup.empty())
 					{
-						s_currentLibrary->group_name = name;
+						report_error(line, "no group left to pop");
+						return false;
 					}
+
+					s_currentGroup.pop_back();
 				}
 				else if (eat_word(linePtr, "add_root"))
 				{
@@ -882,7 +905,7 @@ static bool process_chibi_file(const char * filename)
 					library->path = chibi_path;
 					
 					if (s_currentGroup.empty() == false)
-						library->group_name = s_currentGroup;
+						library->group_name = s_currentGroup.back();
 					
 					library->shared = shared;
 					
@@ -914,7 +937,7 @@ static bool process_chibi_file(const char * filename)
 					library->path = chibi_path;
 					
 					if (s_currentGroup.empty() == false)
-						library->group_name = s_currentGroup;
+						library->group_name = s_currentGroup.back();
 					
 					library->isExecutable = true;
 					
@@ -2602,6 +2625,16 @@ struct CMakeWriter
 					
 					sb.Append("\n");
 				}
+				
+			#if 0
+				if (s_platform == "macos")
+				{
+					sb.AppendFormat("set_target_properties(%s PROPERTIES MACOSX_BUNDLE_INFO_PLIST \"%s\")\n",
+						app->name.c_str(),
+						"/Users/thecat/framework/chibi/AppleInfo.plist");
+					sb.Append("\n");
+				}
+			#endif
 
 				if (s_platform == "macos")
 				{
