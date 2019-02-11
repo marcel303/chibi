@@ -1,0 +1,13 @@
+language: cpp
+
+os:
+  - linux
+  - osx
+
+compiler:
+  - gcc
+  - clang
+
+script: 
+  - mkdir -p build
+  - cd build && cmake -DCMAKE_BUILD_TYPE=Release ../ && cmake --build .
