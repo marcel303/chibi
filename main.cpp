@@ -712,7 +712,13 @@ static void show_syntax_elem(const char * format, const char * description)
 }
 
 static void show_chibi_syntax()
-{	
+{
+	printf("chibi syntax (chibi-root):\n");
+	show_syntax_elem("add <path>", "adds a chibi file to the workspace");
+	show_syntax_elem("add_root <path>", "adds a chibi-root file to the workspace");
+	show_syntax_elem("push_group <name>", "pushes a group name. libraries and apps will be grouped by this name. push_group must be followed by a matching pop_group");
+	show_syntax_elem("pop_group", "restored the group name");
+
 	printf("chibi syntax (global):\n");
 	show_syntax_elem("app <app_name>", "adds an app target with the given name");
 	show_syntax_elem("cmake_module_path <path>", "adds a cmake module path");
