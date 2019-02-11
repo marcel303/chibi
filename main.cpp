@@ -2999,7 +2999,11 @@ int main(int argc, const char * argv[])
 	
 	CMakeWriter writer;
 	
-	writer.write(output_filename);
+	if (!writer.write(output_filename))
+	{
+		report_error(nullptr, "an error occured while generating cmake file");
+		return -1;
+	}
 
 	return 0;
 }
