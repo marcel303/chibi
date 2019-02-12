@@ -1973,6 +1973,9 @@ struct CMakeWriter
 				if (package_dependency.type == ChibiPackageDependency::kType_FindPackage)
 				{
 					sb.AppendFormat("find_package(%s REQUIRED)\n", package_dependency.name.c_str());
+					sb.AppendFormat("if (NOT %s_FOUND)\n", package_dependency.name.c_str());
+					sb.AppendFormat("\tmessage(FATAL_ERROR \"%s not found\")\n", package_dependency.name.c_str());
+					sb.AppendFormat("endif ()\n");
 				}
 			}
 			
@@ -2331,6 +2334,9 @@ struct CMakeWriter
 			// todo : also linux
 				sb.Append("if (APPLE)\n");
 				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
+				sb.Append("\tif (NOT PkgConfig_FOUND)\n");
+				sb.Append("\t\tmessage(FATAL_ERROR \"PkgConfig not found\")\n");
+				sb.Append("\tendif ()\n");
 				sb.Append("endif (APPLE)\n");
 				sb.Append("\n");
 				
