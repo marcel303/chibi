@@ -1959,6 +1959,8 @@ struct CMakeWriter
 
 		if (package_dependency == "Freetype")
 			return "FREETYPE";
+		else if (package_dependency == "OpenGL")
+			return "OPENGL";
 		else
 			return package_dependency.c_str();
 	}
