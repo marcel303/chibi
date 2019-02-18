@@ -2018,8 +2018,9 @@ struct CMakeWriter
 			{
 				if (package_dependency.type == ChibiPackageDependency::kType_FindPackage)
 				{
-					sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES})\n",
+					sb.AppendFormat("target_link_libraries(%s PRIVATE ${%s_LIBRARIES} ${%s_LIBRARY})\n",
 						library.name.c_str(),
+						get_package_dependency_output_name(package_dependency.name),
 						get_package_dependency_output_name(package_dependency.name));
 				}
 			#if ENABLE_PKGCONFIG
@@ -2308,6 +2309,9 @@ struct CMakeWriter
 				sb.Append("\n");
 				
 				sb.Append("set_property(GLOBAL PROPERTY USE_FOLDERS ON)\n");
+				sb.Append("\n");
+
+				sb.Append("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n");
 				sb.Append("\n");
 				
 				if (!s_cmake_module_paths.empty())
