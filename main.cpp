@@ -1194,7 +1194,7 @@ static bool process_chibi_file(const char * filename)
 									
 									if (source_file == nullptr)
 									{
-										report_error(line, "failed to open  file: %s", library_file.filename.c_str());
+										report_error(line, "failed to open file: %s", library_file.filename.c_str());
 										return false;
 									}
 									
@@ -2311,6 +2311,8 @@ struct CMakeWriter
 				sb.Append("set_property(GLOBAL PROPERTY USE_FOLDERS ON)\n");
 				sb.Append("\n");
 
+				// this translates to -fPIC on linux, which is a requirement to build share libraries
+				// on macos this is a default option and always set
 				sb.Append("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n");
 				sb.Append("\n");
 				
@@ -2337,13 +2339,13 @@ struct CMakeWriter
 				sb.Append("endif (CCACHE_PROGRAM)\n");
 				sb.Append("\n");
 				
-			// todo : also linux
-				sb.Append("if (APPLE)\n");
+				// some find_package scripts depend on pkg-config
+				sb.Append("if (UNIX)\n"); // todo
 				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
 				sb.Append("\tif (NOT PkgConfig_FOUND)\n");
 				sb.Append("\t\tmessage(FATAL_ERROR \"PkgConfig not found\")\n");
 				sb.Append("\tendif ()\n");
-				sb.Append("endif (APPLE)\n");
+				sb.Append("endif (UNIX)\n");
 				sb.Append("\n");
 				
 				sb.Append("set(CMAKE_MACOSX_RPATH ON)\n");
