@@ -1,0 +1,12 @@
+library libchibi
+	add_files chibi.cpp chibi.h
+	add_files filesystem.cpp filesystem.h
+	header_path . expose
+
+	with_platform linux compile_definition LINUX *
+	with_platform macos compile_definition MACOS *
+	with_platform windows compile_definition WINDOWS *
+
+app chibi
+	depend_library libchibi
+	add_files main.cpp
