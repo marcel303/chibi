@@ -85,7 +85,7 @@ int main(int argc, const char * argv[])
 			
 			if (!eat_arg(argc, argv, target))
 			{
-				report_error(nullptr, "missing target name: %s", option);
+				report_error("missing target name: %s", option);
 				return -1;
 			}
 			
@@ -93,7 +93,7 @@ int main(int argc, const char * argv[])
 		}
 		else
 		{
-			report_error(nullptr, "unknown command line option: %s", option);
+			report_error("unknown command line option: %s", option);
 			return -1;
 		}
 	}
