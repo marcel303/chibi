@@ -700,7 +700,7 @@ static bool write_if_different(const char * text, const char * filename)
 	}
 }
 
-static void show_chibi_cli()
+void show_chibi_cli()
 {
 	printf("usage: chibi <source_path> <destination_path> [-target <wildcard>]\n");
 	printf("\t<source_path> the path where to begin looking for the chibi root file\n");
@@ -713,7 +713,7 @@ static void show_syntax_elem(const char * format, const char * description)
 	printf("%s\n\t%s\n", format, description);
 }
 
-static void show_chibi_syntax()
+void show_chibi_syntax()
 {
 	printf("chibi syntax (chibi-root):\n");
 	show_syntax_elem("add <path>", "adds a chibi file to the workspace");
@@ -2791,81 +2791,10 @@ struct CMakeWriter
 	}
 };
 
-static bool eat_arg(int & argc, const char **& argv, const char *& arg)
+bool chibi_process(char * cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets)
 {
-	if (argc == 0)
-		return false;
-	
-	arg = *argv;
-	
-	argc -= 1;
-	argv += 1;
-	
-	return true;
-}
-
-int main(int argc, const char * argv[])
-{
-	char cwd[PATH_MAX];
-	cwd[0] = 0;
-	
-	const char * src_path = nullptr;
-	const char * dst_path = nullptr;
-	
-	bool run_cmake = false;
-	bool run_build = false;
-	
-	argc -= 1;
-	argv += 1;
-	
-	if (argc == 0)
-	{
-		show_chibi_cli();
-		printf("\n");
-		
-		show_chibi_syntax();
-		return -1;
-	}
-	else if (!eat_arg(argc, argv, src_path))
-	{
-		report_error(nullptr, "missing source path");
-		return -1;
-	}
-	else if (!eat_arg(argc, argv, dst_path))
-	{
-		report_error(nullptr, "missing destination path");
-		return -1;
-	}
-	
-	while (argc > 0)
-	{
-		const char * option;
-		
-		if (!eat_arg(argc, argv, option))
-			break;
-		
-		if (!strcmp(option, "-cmake"))
-			run_cmake = true;
-		else if (!strcmp(option, "-build"))
-			run_build = true;
-		else if (!strcmp(option, "-target"))
-		{
-			const char * target;
-			
-			if (!eat_arg(argc, argv, target))
-			{
-				report_error(nullptr, "missing target name: %s", option);
-				return -1;
-			}
-			
-			s_chibiInfo.build_targets.insert(target);
-		}
-		else
-		{
-			report_error(nullptr, "unknown command line option: %s", option);
-			return -1;
-		}
-	}
+	for (int i = 0; i < numTargets; ++i)
+		s_chibiInfo.build_targets.insert(targets[i]);
 	
 	if (cwd[0] == 0)
 	{
@@ -2874,7 +2803,7 @@ int main(int argc, const char * argv[])
 		if (getcwd(cwd, PATH_MAX) == nullptr)
 		{
 			report_error(nullptr, "failed to get current working directory");
-			return -1;
+			return false;
 		}
 	}
 	
@@ -2891,7 +2820,7 @@ int main(int argc, const char * argv[])
 		if (!concat(source_path, sizeof(source_path), cwd))
 		{
 			report_error(nullptr, "failed to create absolute path");
-			return -1;
+			return false;
 		}
 	}
 	else if (string_starts_with(src_path, "./"))
@@ -2901,7 +2830,7 @@ int main(int argc, const char * argv[])
 		if (!concat(source_path, sizeof(source_path), cwd, "/", src_path))
 		{
 			report_error(nullptr, "failed to create absolute path");
-			return -1;
+			return false;
 		}
 	}
 	else
@@ -2909,7 +2838,7 @@ int main(int argc, const char * argv[])
 		if (!copy_string(source_path, sizeof(source_path), src_path))
 		{
 			report_error(nullptr, "failed to copy current path");
-			return -1;
+			return false;
 		}
 	}
 
@@ -2965,7 +2894,7 @@ int main(int argc, const char * argv[])
 	if (!copy_string(current_path, sizeof(current_path), source_path))
 	{
 		report_error(nullptr, "failed to copy path");
-		return -1;
+		return false;
 	}
 
 	char build_root[PATH_MAX];
@@ -2977,7 +2906,7 @@ int main(int argc, const char * argv[])
 		if (!concat(root_path, sizeof(root_path), current_path, "/chibi-root.txt"))
 		{
 			report_error(nullptr, "failed to create absolute path");
-			return -1;
+			return false;
 		}
 
 		if (file_exist(root_path))
@@ -2985,7 +2914,7 @@ int main(int argc, const char * argv[])
 			if (!copy_string(build_root, sizeof(build_root), root_path))
 			{
 				report_error(nullptr, "failed to copy path");
-				return -1;
+				return false;
 			}
 		}
 		
@@ -3000,7 +2929,7 @@ int main(int argc, const char * argv[])
 	if (build_root[0] == 0)
 	{
 		report_error(nullptr, "failed to find chibi-root.txt file");
-		return -1;
+		return false;
 	}
 	
 #if 1
@@ -3012,14 +2941,14 @@ int main(int argc, const char * argv[])
 	if (!process_chibi_file(build_root))
 	{
 		report_error(nullptr, "an error occured while scanning for chibi files");
-		return -1;
+		return false;
 	}
 
 	if (s_currentGroup.empty() == false)
 	{
 		// todo : detect missing pop_group within the scope of a chibi file
 		report_error(nullptr, "missing one or more 'pop_group'");
-		return -1;
+		return false;
 	}
 	
 	//s_chibiInfo.dump_info();
@@ -3029,7 +2958,7 @@ int main(int argc, const char * argv[])
 	if (!concat(output_filename, sizeof(output_filename), dst_path, "/", "CMakeLists.txt"))
 	{
 		report_error(nullptr, "failed to create absolute path");
-		return -1;
+		return false;
 	}
 	
 	CMakeWriter writer;
@@ -3037,8 +2966,8 @@ int main(int argc, const char * argv[])
 	if (!writer.write(output_filename))
 	{
 		report_error(nullptr, "an error occured while generating cmake file");
-		return -1;
+		return false;
 	}
 
-	return 0;
+	return true;
 }
