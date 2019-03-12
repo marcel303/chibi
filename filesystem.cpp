@@ -88,3 +88,60 @@ std::vector<std::string> listFiles(const char * path, bool recurse)
 	return result;
 #endif
 }
+
+//
+
+bool write_if_different(const char * text, const char * filename)
+{
+	FileHandle existing_file(filename, "rt");
+	
+	bool is_equal = false;
+	
+	if (existing_file != nullptr)
+	{
+		std::string existing_text;
+		
+		char * line = nullptr;
+		size_t line_size = 0;
+		
+		for (;;)
+		{
+			const ssize_t r = getline(&line, &line_size, existing_file);
+			
+			if (r < 0)
+				break;
+			
+			existing_text.append(line);
+		}
+		
+		free(line);
+		line = nullptr;
+		
+		if (text == existing_text)
+			is_equal = true;
+		
+		existing_file.close();
+	}
+	
+	if (is_equal)
+	{
+		return true;
+	}
+	else
+	{
+		FileHandle file(filename, "wt");
+		
+		if (file == nullptr)
+		{
+			return false;
+		}
+		else
+		{
+			fprintf(file, "%s", text);
+			
+			file.close();
+			
+			return true;
+		}
+	}
+}

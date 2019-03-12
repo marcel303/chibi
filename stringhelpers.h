@@ -1,5 +1,9 @@
 #pragma once
 
+#include <ctype.h> // isspace, tolower
+#include <string>
+#include <string.h>
+
 static bool is_whitespace(const char c)
 {
 	return isspace(c);

@@ -288,7 +288,7 @@ struct ChibiInfo
 		return false;
 	}
 	
-	ChibiLibrary * find_library(const char * name)
+	ChibiLibrary * find_library(const char * name) const
 	{
 		for (auto & library : libraries)
 			if (library->name == name)
@@ -324,8 +324,6 @@ struct ChibiInfo
 
 // fixme : make all of these safe for concurrent use of library version of chibi
 
-static ChibiInfo s_chibiInfo;
-
 static ChibiLibrary * s_currentLibrary = nullptr;
 
 static std::string s_platform;
@@ -334,37 +332,6 @@ static std::string s_platform_full;
 static std::vector<std::string> s_cmake_module_paths;
 
 static std::vector<std::string> s_currentGroup;
-
-struct FileHandle
-{
-	FILE * f = nullptr;
-	
-	FileHandle(const char * filename, const char * mode)
-	{
-		f = fopen(filename, mode);
-	}
-	
-	~FileHandle()
-	{
-		if (f != nullptr)
-		{
-			//printf("warning: file handle not closed normally. closing it now!\n");
-			
-			close();
-		}
-	}
-	
-	void close()
-	{
-		fclose(f);
-		f = nullptr;
-	}
-	
-	operator FILE*()
-	{
-		return f;
-	}
-};
 
 struct StringBuilder
 {
@@ -407,62 +374,6 @@ static bool is_platform(const char * platform)
 		return false;
 }
 
-static bool write_if_different(const char * text, const char * filename)
-{
-	FileHandle existing_file(filename, "rt");
-	
-	bool is_equal = false;
-	
-	if (existing_file != nullptr)
-	{
-		std::string existing_text;
-		
-		char * line = nullptr;
-		size_t line_size = 0;
-		
-		for (;;)
-		{
-			const ssize_t r = getline(&line, &line_size, existing_file);
-			
-			if (r < 0)
-				break;
-			
-			existing_text.append(line);
-		}
-		
-		free(line);
-		line = nullptr;
-		
-		if (text == existing_text)
-			is_equal = true;
-		
-		existing_file.close();
-	}
-	
-	if (is_equal)
-	{
-		return true;
-	}
-	else
-	{
-		FileHandle file(filename, "wt");
-		
-		if (file == nullptr)
-		{
-			report_error(nullptr, "failed to write to file");
-			return false;
-		}
-		else
-		{
-			fprintf(file, "%s", text);
-			
-			file.close();
-			
-			return true;
-		}
-	}
-}
-
 static void show_syntax_elem(const char * format, const char * description)
 {
 	printf("%s\n\t%s\n", format, description);
@@ -497,7 +408,7 @@ void show_chibi_syntax()
 	
 }
 
-static bool process_chibi_file(const char * filename)
+static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
 {
 	ChibiFileScope chibi_scope(filename);
 
@@ -576,7 +487,7 @@ static bool process_chibi_file(const char * filename)
 						
 						const int length = s_current_line_length;
 						
-						if (!process_chibi_file(chibi_file))
+						if (!process_chibi_file(chibi_info, chibi_file))
 							return false;
 						
 						s_currentLibrary = nullptr;
@@ -623,7 +534,7 @@ static bool process_chibi_file(const char * filename)
 							return false;
 						
 						const int length = s_current_line_length;
-						if (!process_chibi_file(chibi_file))
+						if (!process_chibi_file(chibi_info, chibi_file))
 							return false;
 						s_current_line_length = length;
 					}
@@ -657,7 +568,7 @@ static bool process_chibi_file(const char * filename)
 						}
 					}
 					
-					if (s_chibiInfo.library_exists(name))
+					if (chibi_info.library_exists(name))
 					{
 						report_error(line, "library already exists");
 						return false;
@@ -674,7 +585,7 @@ static bool process_chibi_file(const char * filename)
 					
 					library->shared = shared;
 					
-					s_chibiInfo.libraries.push_back(library);
+					chibi_info.libraries.push_back(library);
 					
 					s_currentLibrary = library;
 				}
@@ -690,7 +601,7 @@ static bool process_chibi_file(const char * filename)
 						return false;
 					}
 					
-					if (s_chibiInfo.library_exists(name))
+					if (chibi_info.library_exists(name))
 					{
 						report_error(line, "app already exists");
 						return false;
@@ -707,7 +618,7 @@ static bool process_chibi_file(const char * filename)
 					
 					library->isExecutable = true;
 					
-					s_chibiInfo.libraries.push_back(library);
+					chibi_info.libraries.push_back(library);
 					
 					s_currentLibrary = library;
 				}
@@ -1009,7 +920,7 @@ static bool process_chibi_file(const char * filename)
 							
 							if (!write_if_different(sb.text.c_str(), full_path))
 							{
-								report_error(line, "failed to create conglomerate target");
+								report_error(line, "failed to write conglomerate file. path: %s", full_path);
 								return false;
 							}
 							
@@ -1495,7 +1406,7 @@ static const char * translate_toolchain_to_cmake(const std::string & name)
 
 struct CMakeWriter
 {
-	bool handle_library(ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
+	bool handle_library(const ChibiInfo & chibi_info, ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
 	{
 	#if 0
 		if (library.isExecutable)
@@ -1515,7 +1426,7 @@ struct CMakeWriter
 			
 			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 			{
-				ChibiLibrary * found_library = s_chibiInfo.find_library(library_dependency.name.c_str());
+				ChibiLibrary * found_library = chibi_info.find_library(library_dependency.name.c_str());
 				
 				if (found_library == nullptr)
 				{
@@ -1524,7 +1435,7 @@ struct CMakeWriter
 				}
 				else
 				{
-					if (handle_library(*found_library, traversed_libraries, libraries) == false)
+					if (handle_library(chibi_info, *found_library, traversed_libraries, libraries) == false)
 						return false;
 				}
 			}
@@ -1809,7 +1720,7 @@ struct CMakeWriter
 		return true;
 	}
 	
-	static bool gather_all_library_dependencies(const ChibiLibrary & library, std::vector<ChibiLibraryDependency> & library_dependencies)
+	static bool gather_all_library_dependencies(const ChibiInfo & chibi_info, const ChibiLibrary & library, std::vector<ChibiLibraryDependency> & library_dependencies)
 	{
 		std::set<std::string> traversed_libraries;
 		std::deque<const ChibiLibrary*> stack;
@@ -1832,7 +1743,7 @@ struct CMakeWriter
 					
 					if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 					{
-						const ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.name.c_str());
+						const ChibiLibrary * library = chibi_info.find_library(library_dependency.name.c_str());
 						
 						if (library == nullptr)
 						{
@@ -1851,11 +1762,11 @@ struct CMakeWriter
 		return true;
 	}
 	
-	static bool write_embedded_app_files(StringBuilder & sb, const ChibiLibrary & app)
+	static bool write_embedded_app_files(const ChibiInfo & chibi_info, StringBuilder & sb, const ChibiLibrary & app)
 	{
 		std::vector<ChibiLibraryDependency> library_dependencies;
 		
-		if (!gather_all_library_dependencies(app, library_dependencies))
+		if (!gather_all_library_dependencies(chibi_info, app, library_dependencies))
 			return false;
 		
 		bool has_embed_dependency = false;
@@ -1942,7 +1853,7 @@ struct CMakeWriter
 		{
 			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 			{
-				const ChibiLibrary * library = s_chibiInfo.find_library(library_dependency.name.c_str());
+				const ChibiLibrary * library = chibi_info.find_library(library_dependency.name.c_str());
 				
 				for (auto & dist_file : library->dist_files)
 				{
@@ -2010,7 +1921,7 @@ struct CMakeWriter
 		return true;
 	}
 	
-	bool write(const char * output_filename)
+	bool write(const ChibiInfo & chibi_info, const char * output_filename)
 	{
 		// gather the library targets to emit
 		
@@ -2018,26 +1929,26 @@ struct CMakeWriter
 		
 		std::vector<ChibiLibrary*> libraries;
 		
-		for (auto & library : s_chibiInfo.libraries)
+		for (auto & library : chibi_info.libraries)
 		{
 			if (traversed_libraries.count(library->name) != 0)
 				continue;
 			
-			if (library->isExecutable && s_chibiInfo.should_build_target(library->name.c_str()))
+			if (library->isExecutable && chibi_info.should_build_target(library->name.c_str()))
 			{
-				if (handle_library(*library, traversed_libraries, libraries) == false)
+				if (handle_library(chibi_info, *library, traversed_libraries, libraries) == false)
 					return false;
 			}
 		}
 		
-		for (auto & library : s_chibiInfo.libraries)
+		for (auto & library : chibi_info.libraries)
 		{
 			if (traversed_libraries.count(library->name) != 0)
 				continue;
 			
-			if (s_chibiInfo.should_build_target(library->name.c_str()))
+			if (chibi_info.should_build_target(library->name.c_str()))
 			{
-				if (handle_library(*library, traversed_libraries, libraries) == false)
+				if (handle_library(chibi_info, *library, traversed_libraries, libraries) == false)
 					return false;
 			}
 		}
@@ -2428,7 +2339,7 @@ struct CMakeWriter
 				if (!write_package_dependencies(sb, *app))
 					return false;
 				
-				if (!write_embedded_app_files(sb, *app))
+				if (!write_embedded_app_files(chibi_info, sb, *app))
 					return false;
 				
 			// todo : let libraries and apps add target properties
@@ -2594,8 +2505,10 @@ bool find_chibi_build_root(const char * source_path, char * build_root, const in
 
 bool chibi_process(char * cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets)
 {
+	ChibiInfo chibi_info;
+	
 	for (int i = 0; i < numTargets; ++i)
-		s_chibiInfo.build_targets.insert(targets[i]);
+		chibi_info.build_targets.insert(targets[i]);
 	
 	if (cwd[0] == 0)
 	{
@@ -2705,7 +2618,7 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 	printf("build_root: %s\n", build_root);
 #endif
 
-	if (!process_chibi_file(build_root))
+	if (!process_chibi_file(chibi_info, build_root))
 	{
 		report_error(nullptr, "an error occured while scanning for chibi files");
 		return false;
@@ -2730,7 +2643,7 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 	
 	CMakeWriter writer;
 	
-	if (!writer.write(output_filename))
+	if (!writer.write(chibi_info, output_filename))
 	{
 		report_error(nullptr, "an error occured while generating cmake file");
 		return false;
