@@ -109,6 +109,7 @@ static bool is_comment_or_whitespace(const char * line)
 	return true;
 }
 
+// eats an arbitrary word and stores the result in 'word'. has built-in support for quoted strings
 static bool eat_word_v2(char *& line, const char *& word)
 {
 	while (*line != 0 && is_whitespace(*line) == true)
@@ -152,7 +153,8 @@ static bool eat_word_v2(char *& line, const char *& word)
 	}
 }
 
-static bool eat_word(char *& line, const char * word)
+// checks if 'line' begin with 'word' and eats 'word' from 'line' when it does
+static bool eat_word(char * & line, const char * word)
 {
 	while (is_whitespace(*line))
 		line++;
@@ -1476,12 +1478,26 @@ static bool process_chibi_file(const char * filename)
 						
 						if (platform != nullptr && platform != s_platform)
 							continue;
-							
+						
 						char full_path[PATH_MAX];
-						if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
+						
+						if (strcmp(path, ".") == 0)
 						{
-							report_error(line, "failed to create absolute path");
-							return false;
+							// the target just wants to include its own base path. use a more simplified full path
+							
+							if (!concat(full_path, sizeof(full_path), chibi_path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+						else
+						{
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
 						}
 						
 						ChibiHeaderPath header_path;
