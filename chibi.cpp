@@ -2783,6 +2783,52 @@ struct CMakeWriter
 	}
 };
 
+bool find_chibi_build_root(const char * source_path, char * build_root, const int build_root_size)
+{
+	// recursively find build_root
+	
+	char current_path[PATH_MAX];
+	if (!copy_string(current_path, sizeof(current_path), source_path))
+	{
+		report_error(nullptr, "failed to copy path");
+		return false;
+	}
+	
+	assert(build_root_size > 0);
+	build_root[0] = 0;
+
+	for (;;)
+	{
+		char root_path[PATH_MAX];
+		if (!concat(root_path, sizeof(root_path), current_path, "/chibi-root.txt"))
+		{
+			report_error(nullptr, "failed to create absolute path");
+			return false;
+		}
+
+		if (file_exist(root_path))
+		{
+			if (!copy_string(build_root, build_root_size, root_path))
+			{
+				report_error(nullptr, "failed to copy path");
+				return false;
+			}
+		}
+		
+		char * term = strrchr(current_path, '/');
+
+		if (term == nullptr)
+			break;
+		else
+			*term = 0;
+	}
+	
+	if (build_root[0] == 0)
+		return false;
+	
+	return true;
+}
+
 bool chibi_process(char * cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets)
 {
 	for (int i = 0; i < numTargets; ++i)
@@ -2882,43 +2928,9 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 
 	// recursively find build_root
 	
-	char current_path[PATH_MAX];
-	if (!copy_string(current_path, sizeof(current_path), source_path))
-	{
-		report_error(nullptr, "failed to copy path");
-		return false;
-	}
-
 	char build_root[PATH_MAX];
-	memset(build_root, 0, sizeof(build_root));
-
-	for (;;)
-	{
-		char root_path[PATH_MAX];
-		if (!concat(root_path, sizeof(root_path), current_path, "/chibi-root.txt"))
-		{
-			report_error(nullptr, "failed to create absolute path");
-			return false;
-		}
-
-		if (file_exist(root_path))
-		{
-			if (!copy_string(build_root, sizeof(build_root), root_path))
-			{
-				report_error(nullptr, "failed to copy path");
-				return false;
-			}
-		}
-		
-		char * term = strrchr(current_path, '/');
-
-		if (term == nullptr)
-			break;
-		else
-			*term = 0;
-	}
 	
-	if (build_root[0] == 0)
+	if (find_chibi_build_root(source_path, build_root, sizeof(build_root)) == false)
 	{
 		report_error(nullptr, "failed to find chibi-root.txt file");
 		return false;
