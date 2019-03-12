@@ -1395,6 +1395,12 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 		
 		f.close();
 		
+		if (group_stack.size() > 1)
+		{
+			report_error(nullptr, "missing one or more 'pop_group'");
+			return false;
+		}
+		
 		return true;
 	}
 }
@@ -2626,13 +2632,6 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 	if (!process_chibi_file(chibi_info, build_root, current_group))
 	{
 		report_error(nullptr, "an error occured while scanning for chibi files");
-		return false;
-	}
-
-	if (current_group.empty() == false)
-	{
-		// todo : detect missing pop_group within the scope of a chibi file
-		report_error(nullptr, "missing one or more 'pop_group'");
 		return false;
 	}
 	
