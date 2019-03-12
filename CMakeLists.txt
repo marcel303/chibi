@@ -6,7 +6,7 @@ project(chibi)
 
 # --- chibi ---
 
-add_executable(chibi filesystem.cpp filesystem.h main.cpp)
+add_executable(chibi filesystem.cpp filesystem.h chibi.cpp)
 
 if (WIN32)
 	target_compile_definitions(chibi PUBLIC WINDOWS)
