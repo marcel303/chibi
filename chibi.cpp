@@ -277,6 +277,8 @@ struct ChibiInfo
 	
 	std::vector<ChibiLibrary*> libraries;
 	
+	std::vector<std::string> cmake_module_paths;
+	
 	bool library_exists(const char * name) const
 	{
 		for (auto & library : libraries)
@@ -328,10 +330,6 @@ static ChibiLibrary * s_currentLibrary = nullptr;
 
 static std::string s_platform;
 static std::string s_platform_full;
-
-static std::vector<std::string> s_cmake_module_paths;
-
-static std::vector<std::string> s_currentGroup;
 
 struct StringBuilder
 {
@@ -408,11 +406,14 @@ void show_chibi_syntax()
 	
 }
 
-static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
+static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group)
 {
 	ChibiFileScope chibi_scope(filename);
 
 	s_currentLibrary = nullptr;
+	
+	std::vector<std::string> group_stack;
+	group_stack.push_back(current_group);
 	
 	char chibi_path[PATH_MAX];
 
@@ -487,7 +488,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
 						
 						const int length = s_current_line_length;
 						
-						if (!process_chibi_file(chibi_info, chibi_file))
+						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back()))
 							return false;
 						
 						s_currentLibrary = nullptr;
@@ -505,17 +506,17 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
 						return false;
 					}
 					
-					s_currentGroup.push_back(name);
+					group_stack.push_back(name);
 				}
 				else if (eat_word(linePtr, "pop_group"))
 				{
-					if (s_currentGroup.empty())
+					if (group_stack.size() == 1)
 					{
 						report_error(line, "no group left to pop");
 						return false;
 					}
 
-					s_currentGroup.pop_back();
+					group_stack.pop_back();
 				}
 				else if (eat_word(linePtr, "add_root"))
 				{
@@ -534,8 +535,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
 							return false;
 						
 						const int length = s_current_line_length;
-						if (!process_chibi_file(chibi_info, chibi_file))
+						
+						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back()))
 							return false;
+						
 						s_current_line_length = length;
 					}
 				}
@@ -580,8 +583,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
 					library->path = chibi_path;
 					library->chibi_file = s_currentFile.back();
 					
-					if (s_currentGroup.empty() == false)
-						library->group_name = s_currentGroup.back();
+					if (group_stack.back().empty() == false)
+						library->group_name = group_stack.back();
 					
 					library->shared = shared;
 					
@@ -613,8 +616,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
 					library->path = chibi_path;
 					library->chibi_file = s_currentFile.back();
 					
-					if (s_currentGroup.empty() == false)
-						library->group_name = s_currentGroup.back();
+					if (group_stack.back().empty() == false)
+						library->group_name = group_stack.back();
 					
 					library->isExecutable = true;
 					
@@ -639,7 +642,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename)
 						return false;
 					}
 					
-					s_cmake_module_paths.push_back(full_path);
+					chibi_info.cmake_module_paths.push_back(full_path);
 				}
 				else if (eat_word(linePtr, "add_files"))
 				{
@@ -1998,9 +2001,9 @@ struct CMakeWriter
 				sb.Append("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n");
 				sb.Append("\n");
 				
-				if (!s_cmake_module_paths.empty())
+				if (!chibi_info.cmake_module_paths.empty())
 				{
-					for (auto & cmake_module_path : s_cmake_module_paths)
+					for (auto & cmake_module_path : chibi_info.cmake_module_paths)
 						sb.AppendFormat("list(APPEND CMAKE_MODULE_PATH \"%s\")\n", cmake_module_path.c_str());
 					sb.Append("\n");
 				}
@@ -2618,13 +2621,15 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 	printf("build_root: %s\n", build_root);
 #endif
 
-	if (!process_chibi_file(chibi_info, build_root))
+	std::string current_group;
+	
+	if (!process_chibi_file(chibi_info, build_root, current_group))
 	{
 		report_error(nullptr, "an error occured while scanning for chibi files");
 		return false;
 	}
 
-	if (s_currentGroup.empty() == false)
+	if (current_group.empty() == false)
 	{
 		// todo : detect missing pop_group within the scope of a chibi file
 		report_error(nullptr, "missing one or more 'pop_group'");
