@@ -32,6 +32,14 @@ static void report_error(const char * format, ...)
 	printf("error: %s\n", text);
 }
 
+static void show_chibi_cli()
+{
+	printf("usage: chibi <source_path> <destination_path> ..[-target <wildcard>]\n");
+	printf("\t<source_path> the path where to begin looking for the chibi root file\n");
+	printf("\t<destination_path> the path where to output the generated cmake file\n");
+	printf("\t-target sets an optional filter for the <app_name> or <library_name> to limit the scope of the generated cmake file to only the specific target(s). <wildcard> may specify either the complete target name or a wildcard. when used more than once, multiple targets can be set\n");
+}
+
 int main(int argc, const char * argv[])
 {
 	char cwd[PATH_MAX];
