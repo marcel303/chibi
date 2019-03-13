@@ -2512,59 +2512,53 @@ bool find_chibi_build_root(const char * source_path, char * build_root, const in
 	return true;
 }
 
-bool chibi_process(char * cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets)
+static bool create_absolute_path_given_cwd(const char * cwd, const char * path, char * out_path, const int out_path_size)
 {
-	ChibiInfo chibi_info;
-	
-	for (int i = 0; i < numTargets; ++i)
-		chibi_info.build_targets.insert(targets[i]);
-	
-	if (cwd[0] == 0)
-	{
-		// get the current working directory. this is the root of our operations
-
-		if (getcwd(cwd, PATH_MAX) == nullptr)
-		{
-			report_error(nullptr, "failed to get current working directory");
-			return false;
-		}
-	}
-	
-	for (int i = 0; cwd[i] != 0; ++i)
-		if (cwd[i] == '\\')
-			cwd[i] = '/';
-	
 	// create the current absolute path given the source path command line option and the current working directory
 	
-	char source_path[PATH_MAX];
-	
-	if (!strcmp(src_path, "."))
+	if (!strcmp(path, "."))
 	{
-		if (!concat(source_path, sizeof(source_path), cwd))
+		if (!concat(out_path, out_path_size, cwd))
 		{
-			report_error(nullptr, "failed to create absolute path");
 			return false;
 		}
 	}
-	else if (string_starts_with(src_path, "./"))
+	else if (string_starts_with(path, "./"))
 	{
-		src_path += 2;
+		path += 2;
 		
-		if (!concat(source_path, sizeof(source_path), cwd, "/", src_path))
+		if (!concat(out_path, out_path_size, cwd, "/", path))
 		{
-			report_error(nullptr, "failed to create absolute path");
 			return false;
 		}
 	}
 	else
 	{
-		if (!copy_string(source_path, sizeof(source_path), src_path))
+		if (!copy_string(out_path, out_path_size, path))
 		{
-			report_error(nullptr, "failed to copy current path");
 			return false;
 		}
 	}
+	
+	return true;
+}
 
+static bool get_current_working_directory(char * out_cwd, const int out_cwd_size)
+{
+	if (getcwd(out_cwd, out_cwd_size) == nullptr)
+		return false;
+	
+	// normalize path separators
+	
+	for (int i = 0; out_cwd[i] != 0; ++i)
+		if (out_cwd[i] == '\\')
+			out_cwd[i] = '/';
+	
+	return true;
+}
+
+bool chibi_process(ChibiInfo & chibi_info, const char * build_root)
+{
 	// set the platform name
 	
 #if defined(MACOS)
@@ -2611,6 +2605,60 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 	}
 #endif
 
+	std::string current_group;
+	
+	if (!process_chibi_file(chibi_info, build_root, current_group))
+	{
+		report_error(nullptr, "an error occured while scanning for chibi files");
+		return false;
+	}
+	
+	//s_chibiInfo.dump_info();
+	
+	return true;
+}
+
+bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets)
+{
+	ChibiInfo chibi_info;
+	
+	for (int i = 0; i < numTargets; ++i)
+		chibi_info.build_targets.insert(targets[i]);
+	
+	//
+	
+	char cwd[PATH_MAX];
+	
+	if (in_cwd[0] == 0)
+	{
+		// get the current working directory. this is the root of our operations
+
+		if (get_current_working_directory(cwd, sizeof(cwd)) == false)
+		{
+			report_error(nullptr, "failed to get current working directory");
+			return false;
+		}
+	}
+	else
+	{
+		if (!copy_string(cwd, sizeof(cwd), in_cwd))
+		{
+			report_error(nullptr, "failed to copy cwd string");
+			return false;
+		}
+	}
+	
+	//
+	
+	char source_path[PATH_MAX];
+	
+	if (create_absolute_path_given_cwd(cwd, src_path, source_path, sizeof(source_path)) == false)
+	{
+		report_error(nullptr, "failed to create absolute path");
+		return false;
+	}
+
+	
 	// recursively find build_root
 	
 	char build_root[PATH_MAX];
@@ -2627,15 +2675,10 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 	printf("build_root: %s\n", build_root);
 #endif
 
-	std::string current_group;
-	
-	if (!process_chibi_file(chibi_info, build_root, current_group))
-	{
-		report_error(nullptr, "an error occured while scanning for chibi files");
+	if (chibi_process(chibi_info, build_root) == false)
 		return false;
-	}
 	
-	//s_chibiInfo.dump_info();
+	//
 	
 	char output_filename[PATH_MAX];
 	
@@ -2653,5 +2696,27 @@ bool chibi_process(char * cwd, const char * src_path, const char * dst_path, con
 		return false;
 	}
 
+	return true;
+}
+
+bool list_chibi_targets(const char * build_root, std::vector<std::string> & library_targets, std::vector<std::string> & app_targets)
+{
+	ChibiInfo chibi_info;
+	
+	//
+	
+	if (chibi_process(chibi_info, build_root) == false)
+		return false;
+	
+	//
+	
+	for (auto * library : chibi_info.libraries)
+	{
+		if (library->isExecutable)
+			app_targets.push_back(library->name);
+		else
+			library_targets.push_back(library->name);
+	}
+	
 	return true;
 }

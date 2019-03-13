@@ -106,7 +106,7 @@ int main(int argc, const char * argv[])
 	for (auto & target : build_targets)
 		targets[index++] = target.c_str();
 	
-	if (chibi_process(cwd, src_path, dst_path, targets, numTargets) == false)
+	if (chibi_generate(cwd, src_path, dst_path, targets, numTargets) == false)
 		return -1;
 	
 	return 0;
