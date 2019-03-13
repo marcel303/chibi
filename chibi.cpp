@@ -11,6 +11,8 @@
 #include <string.h>
 #include <vector>
 
+using namespace chibi_filesystem;
+
 /*
 brew install ccache
 */
@@ -406,7 +408,7 @@ void show_chibi_syntax()
 	
 }
 
-static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group)
+static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group, const bool skip_file_scan)
 {
 	ChibiFileScope chibi_scope(filename);
 
@@ -488,7 +490,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const int length = s_current_line_length;
 						
-						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back()))
+						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan))
 							return false;
 						
 						s_currentLibrary = nullptr;
@@ -536,7 +538,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const int length = s_current_line_length;
 						
-						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back()))
+						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan))
 							return false;
 						
 						s_current_line_length = length;
@@ -775,6 +777,9 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							}
 						}
 						
+						if (skip_file_scan)
+							continue;
+						
 						// scan files
 						
 						char search_path[PATH_MAX];
@@ -847,6 +852,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 								report_error(line, "failed to create absolute path");
 								return false;
 							}
+							
+							// todo : use write_if_different to avoid marking files dirty unncessarily
 							
 							FileHandle target_file(full_path, "wt");
 							
@@ -2557,7 +2564,7 @@ static bool get_current_working_directory(char * out_cwd, const int out_cwd_size
 	return true;
 }
 
-bool chibi_process(ChibiInfo & chibi_info, const char * build_root)
+bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool skip_file_scan)
 {
 	// set the platform name
 	
@@ -2607,7 +2614,7 @@ bool chibi_process(ChibiInfo & chibi_info, const char * build_root)
 
 	std::string current_group;
 	
-	if (!process_chibi_file(chibi_info, build_root, current_group))
+	if (!process_chibi_file(chibi_info, build_root, current_group, skip_file_scan))
 	{
 		report_error(nullptr, "an error occured while scanning for chibi files");
 		return false;
@@ -2675,7 +2682,7 @@ bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst
 	printf("build_root: %s\n", build_root);
 #endif
 
-	if (chibi_process(chibi_info, build_root) == false)
+	if (chibi_process(chibi_info, build_root, false) == false)
 		return false;
 	
 	//
@@ -2705,7 +2712,7 @@ bool list_chibi_targets(const char * build_root, std::vector<std::string> & libr
 	
 	//
 	
-	if (chibi_process(chibi_info, build_root) == false)
+	if (chibi_process(chibi_info, build_root, true) == false)
 		return false;
 	
 	//
