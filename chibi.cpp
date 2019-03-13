@@ -2,6 +2,7 @@
 #include "stringhelpers.h"
 
 #include <algorithm>
+#include <assert.h>
 #include <deque>
 #include <limits.h>
 #include <map>
