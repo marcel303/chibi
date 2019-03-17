@@ -2051,15 +2051,16 @@ struct CMakeWriter
 				sb.Append("\n");
 
 				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND NOT CMAKE_CL_64)\n");
-				sb.Append("\tadd_compile_options(/arch:SSE2)\n");
-				sb.Append("\tadd_definitions(-D__SSE2__)\n");
+				sb.Append("\tadd_compile_options(/arch:AVX)\n");
+				sb.Append("\tadd_definitions(-D__SSE2__)\n"); // MSVC doesn't define __SSE__, __SSE2__ and the likes. although it _does_ define __AVX__ and __AVX2__
+				sb.Append("\tadd_definitions(-D__SSSE3__)\n");
 				sb.Append("endif ()\n");
 				sb.Append("\n");
 
 				// let CMake generate export definitions for all symbols it finds inside the generated object files, to normalize the behavior
 				// across Windows and Linux/OSX; which, Windows being the odd one out, both do this by default
-				sb.Append("set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)\n");
-				sb.Append("\n");
+				//sb.Append("set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)\n");
+				//sb.Append("\n");
 				
 				// normalize the group delimiter to be '/'
 				sb.Append("set(SOURCE_GROUP_DELIMITER \"/\")\n");
