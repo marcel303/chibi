@@ -6,6 +6,13 @@
 #include <string>
 #include <string.h>
 
+#ifdef _MSC_VER
+	#include <Windows.h>
+	#ifndef PATH_MAX
+		#define PATH_MAX _MAX_PATH
+	#endif
+#endif
+
 static bool eat_arg(int & argc, const char **& argv, const char *& arg)
 {
 	if (argc == 0)
