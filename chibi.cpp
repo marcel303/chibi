@@ -73,6 +73,13 @@ brew install ccache
 	#include <unistd.h>
 #endif
 
+#if defined(__GNUC__)
+	#define sprintf_s(s, ss, f, ...) snprintf(s, ss, f, __VA_ARGS__)
+	#define vsprintf_s(s, ss, f, a) vsnprintf(s, ss, f, a)
+	#define strcpy_s(d, ds, s) strcpy(d, s)
+	#define sscanf_s sscanf
+#endif
+
 // todo : redesign the embed_framework option
 
 #define STRING_BUFFER_SIZE (1 << 12)
@@ -114,7 +121,7 @@ static void report_error(const char * line, const char * format, ...)
 	char text[1024];
 	va_list ap;
 	va_start(ap, format);
-	vsprintf(text, format, ap);
+	vsprintf_s(text, sizeof(text), format, ap);
 	va_end(ap);
 	
 	//
@@ -358,7 +365,7 @@ struct StringBuilder
 		va_list va;
 		va_start(va, format);
 		char text[STRING_BUFFER_SIZE];
-		vsprintf(text, format, va);
+		vsprintf_s(text, sizeof(text), format, va);
 		va_end(va);
 
 		Append(text);
@@ -1542,7 +1549,7 @@ struct CMakeWriter
 							return false;
 						}
 						
-						strcpy(condition_end, ">");
+						strcpy_s(condition_end, sizeof(condition_end), ">");
 					}
 					
 					if (compile_definition.value.empty())
@@ -2554,8 +2561,13 @@ static bool create_absolute_path_given_cwd(const char * cwd, const char * path, 
 
 static bool get_current_working_directory(char * out_cwd, const int out_cwd_size)
 {
+#if WINDOWS
+	if (_getcwd(out_cwd, out_cwd_size) == nullptr)
+		return false;
+#else
 	if (getcwd(out_cwd, out_cwd_size) == nullptr)
 		return false;
+#endif
 	
 	// normalize path separators
 	

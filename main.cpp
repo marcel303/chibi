@@ -13,6 +13,13 @@
 	#endif
 #endif
 
+#if defined(__GNUC__)
+	#define sprintf_s(s, ss, f, ...) snprintf(s, ss, f, __VA_ARGS__)
+	#define vsprintf_s(s, ss, f, a) vsnprintf(s, ss, f, a)
+	#define strcpy_s(d, ds, s) strcpy(d, s)
+	#define sscanf_s sscanf
+#endif
+
 static bool eat_arg(int & argc, const char **& argv, const char *& arg)
 {
 	if (argc == 0)
@@ -31,7 +38,7 @@ static void report_error(const char * format, ...)
 	char text[1024];
 	va_list ap;
 	va_start(ap, format);
-	vsprintf(text, format, ap);
+	vsprintf_s(text, sizeof(text), format, ap);
 	va_end(ap);
 	
 	//
