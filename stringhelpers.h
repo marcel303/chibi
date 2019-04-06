@@ -4,6 +4,8 @@
 #include <string>
 #include <string.h>
 
+// todo : put these in a namespace and make some of them inline or otherwise move to cpp file
+
 static bool is_whitespace(const char c)
 {
 	return isspace(c);
