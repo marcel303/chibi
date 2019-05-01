@@ -2083,6 +2083,14 @@ struct CMakeWriter
 				if (s_platform == "macos")
 				{
 					sb.Append("add_compile_options(-mavx2)\n");
+				}
+				
+			// fixme : this should be defined through the user's workspace
+				if (s_platform == "windows")
+				{
+					// Windows.h defines min and max macros, which are always causing issues in portable code
+					// we can get rid of them by defining NOMINMAX before including Windows.h
+					sb.Append("add_definitions(-DNOMINMAX)\n");
 					sb.Append("\n");
 				}
 
