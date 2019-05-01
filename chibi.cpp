@@ -2064,6 +2064,14 @@ struct CMakeWriter
 				sb.Append("endif ()\n");
 				sb.Append("\n");
 
+				if (s_platform == "windows")
+				{
+					// Windows.h defines min and max macros, which are always causing issues in portable code
+					// we can get rid of them by defining NOMINMAX before including Windows.h
+					sb.Append("add_definitions(-DNOMINMAX)\n");
+					sb.Append("\n");
+				}
+
 				// let CMake generate export definitions for all symbols it finds inside the generated object files, to normalize the behavior
 				// across Windows and Linux/OSX; which, Windows being the odd one out, both do this by default
 				sb.Append("set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)\n");
