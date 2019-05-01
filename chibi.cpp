@@ -2073,11 +2073,18 @@ struct CMakeWriter
 				sb.Append("\n");
 
 				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND NOT CMAKE_CL_64)\n");
-				sb.Append("\tadd_compile_options(/arch:AVX)\n");
+				sb.Append("\tadd_compile_options(/arch:AVX2)\n");
 				sb.Append("\tadd_definitions(-D__SSE2__)\n"); // MSVC doesn't define __SSE__, __SSE2__ and the likes. although it _does_ define __AVX__ and __AVX2__
 				sb.Append("\tadd_definitions(-D__SSSE3__)\n");
 				sb.Append("endif ()\n");
 				sb.Append("\n");
+
+			// fixme : this should be defined through the user's workspace
+				if (s_platform == "macos")
+				{
+					sb.Append("add_compile_options(-mavx2)\n");
+					sb.Append("\n");
+				}
 
 				// let CMake generate export definitions for all symbols it finds inside the generated object files, to normalize the behavior
 				// across Windows and Linux/OSX; which, Windows being the odd one out, both do this by default
@@ -2392,6 +2399,8 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
+			// todo : add AppleInfo.plist file to chibi repository or auto-generate it
+			// todo : put generated plist file into the output location
 			#if 0
 				if (s_platform == "macos")
 				{
