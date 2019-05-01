@@ -1892,15 +1892,30 @@ struct CMakeWriter
 					else
 						filename = &dist_file[i + 1];
 					
-					sb.AppendFormat(
-						"add_custom_command(\n" \
-							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
-							"\tDEPENDS \"%s\")\n",
-						app.name.c_str(),
-						dist_file.c_str(),
-						filename,
-						dist_file.c_str());
+					if (s_platform == "macos")
+					{
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${BUNDLE_PATH}/Contents/MacOS/%s\"\n" \
+								"\tDEPENDS \"%s\")\n",
+							app.name.c_str(),
+							dist_file.c_str(),
+							filename,
+							dist_file.c_str());
+					}
+					else
+					{
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
+								"\tDEPENDS \"%s\")\n",
+							app.name.c_str(),
+							dist_file.c_str(),
+							filename,
+							dist_file.c_str());
+					}
 				}
 				
 				if (library->shared)
@@ -2658,7 +2673,7 @@ bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst
 	
 	char cwd[PATH_MAX];
 	
-	if (in_cwd[0] == 0)
+	if (in_cwd == nullptr || in_cwd[0] == 0)
 	{
 		// get the current working directory. this is the root of our operations
 

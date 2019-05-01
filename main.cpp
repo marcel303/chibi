@@ -73,16 +73,14 @@ int main(int argc, const char * argv[])
 		show_chibi_syntax();
 		return -1;
 	}
-	else if (!eat_arg(argc, argv, src_path))
+	
+	enum Mode
 	{
-		report_error("missing source path");
-		return -1;
-	}
-	else if (!eat_arg(argc, argv, dst_path))
-	{
-		report_error("missing destination path");
-		return -1;
-	}
+		kMode_Unknown,
+		kMode_Generate,
+	};
+	
+	Mode mode = kMode_Unknown;
 	
 	std::set<std::string> build_targets;
 	
@@ -93,7 +91,22 @@ int main(int argc, const char * argv[])
 		if (!eat_arg(argc, argv, option))
 			break;
 		
-		if (!strcmp(option, "-target"))
+		if (!strcmp(option, "-generate") || !strcmp(option, "-g"))
+		{
+			mode = kMode_Generate;
+			
+			if (!eat_arg(argc, argv, src_path))
+			{
+				report_error("missing source path");
+				return -1;
+			}
+			else if (!eat_arg(argc, argv, dst_path))
+			{
+				report_error("missing destination path");
+				return -1;
+			}
+		}
+		else if (!strcmp(option, "-target"))
 		{
 			const char * target;
 			
@@ -110,6 +123,12 @@ int main(int argc, const char * argv[])
 			report_error("unknown command line option: %s", option);
 			return -1;
 		}
+	}
+	
+	if (mode == kMode_Unknown)
+	{
+		report_error("nothing to do");
+		return -1;
 	}
 	
 	const int numTargets = build_targets.size();
