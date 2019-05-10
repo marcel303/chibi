@@ -1814,7 +1814,7 @@ struct CMakeWriter
 				
 				if (s_platform == "macos")
 				{
-					sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app.name.c_str());
+					write_set_osx_bundle_path(sb, app.name.c_str());
 					
 					if (string_ends_with(filename, ".framework"))
 					{
@@ -1894,6 +1894,8 @@ struct CMakeWriter
 					
 					if (s_platform == "macos")
 					{
+						write_set_osx_bundle_path(sb, app.name.c_str());
+
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
@@ -1927,7 +1929,7 @@ struct CMakeWriter
 					
 					if (s_platform == "macos")
 					{
-						sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app.name.c_str());
+						write_set_osx_bundle_path(sb, app.name.c_str());
 						
 						sb.AppendFormat(
 							"add_custom_command(\n" \
@@ -1958,6 +1960,24 @@ struct CMakeWriter
 		}
 		
 		return true;
+	}
+
+	static void write_set_osx_bundle_path(StringBuilder & sb, const char * app_name)
+	{
+		// mysterious code snippet to fetch GENERATOR_IS_MULTI_CONFIG.
+		// why can't I just use GENERATOR_IS_MULTI_CONFIG directly inside the if statement...
+		sb.AppendFormat("get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)\n");
+
+		// the output location depends on the build system being used. CMake offers no real
+		// way in helping figure out the correct path, so we use a function here which sort
+		// of guesses the right location for our app bundle
+		// really.. you would think your build system would help you out here.. but it doesn't and
+		// the internet is littered with people asking the same question over and over...
+		sb.AppendFormat("if (is_multi_config)\n");
+		sb.AppendFormat("\tset(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app_name);
+		sb.AppendFormat("else ()\n");
+		sb.AppendFormat("\tset(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/%s.app\")\n", app_name);
+		sb.AppendFormat("endif ()\n");
 	}
 	
 	bool write(const ChibiInfo & chibi_info, const char * output_filename)
@@ -2323,20 +2343,24 @@ struct CMakeWriter
 				{
 					if (s_platform == "macos")
 					{
-						sb.AppendFormat("set(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app->name.c_str());
-						
+						write_set_osx_bundle_path(sb, app->name.c_str());
+
 						// use rsync to copy resources
 						
 						// but first make sure the target directory exists
 						
 						// note : we use a conditional to check if we're building a deployment app bundle
+						//        ideally CMake would have build config dependent custom commands,
+						//        this is really just a workaround/hack for missing behavior
 						
 						const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
 						
+						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Resources\")\n");
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND %s ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Resources\"\n" \
+								"\tCOMMAND %s \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
 								"\tDEPENDS \"%s\")\n",
 							app->name.c_str(),
 							conditional,
@@ -2355,15 +2379,17 @@ struct CMakeWriter
 						}
 
 						// rsync
+						sb.AppendFormat("set(args rsync -r %s \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\")\n",
+								exclude_args.c_str(),
+								app->resource_path.c_str());
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND %s rsync -r %s \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\"\n" \
+								"\tCOMMAND %s \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
 								"\tDEPENDS \"%s\")\n",
 							app->name.c_str(),
 							conditional,
-							exclude_args.c_str(),
-							app->resource_path.c_str(),
 							app->resource_path.c_str());
 					
 						sb.Append("\n");
@@ -2422,19 +2448,27 @@ struct CMakeWriter
 				if (s_platform == "macos")
 				{
 					// add rpath to the generated executable so that it can find dylibs inside the location of the executable itself. this is needed when copying generated shared libraries into the app bundle
+
+					write_set_osx_bundle_path(sb, app->name.c_str());
+					
+					// note : we use a conditional to check if we're building a deployment app bundle
+					//        ideally CMake would have build config dependent custom commands,
+					//        this is really just a workaround/hack for missing behavior
 					
 					const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
 				
 				// fixme : cmake is broken and always runs the custom command, regardless of whether the DEPENDS target is dirty or not. this causes install_name_tool to fail, as the rpath has already been set. I've appended "|| true" at the end of the command, to effectively ignore the return code from install_name_tool. a nasty side effect of this is we don't know whether the command succeeded or actually failed for some valid reason.. so ideally this hack is removed once cmake's behavior is fixed
 				
+					sb.AppendFormat("set(args install_name_tool -add_rpath \"@executable_path\" \"${BUNDLE_PATH}/Contents/MacOS/%s\" || true)\n",
+							app->name.c_str());
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s install_name_tool -add_rpath \"@executable_path\" \"${BUNDLE_PATH}/Contents/MacOS/%s\" || true\n" \
+							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND_EXPAND_LISTS\n" \
 							"\tDEPENDS %s)\n",
 						app->name.c_str(),
 						conditional,
-						app->name.c_str(),
 						app->name.c_str());
 					
 					sb.Append("\n");
