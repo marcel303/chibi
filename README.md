@@ -2,7 +2,7 @@
 ## chibi at a glance
 chibi is a small, pragmatic, specification-based project file generator. chibi is built with the following design principles in mind:
 
-* App and library specifications should use a minimal description. No turing complete language, and more control to the end user and to thw build system.
+* App and library specifications should use a minimal description. No turing complete language, and more control to the end user and to the build system.
 * The user should be in control of the environment. It is no longer up to the libraries and apps to dictate how projects are organized or how apps are compiled and packaged. Some control is there (like how to organize target files into folders); but the control ends there.
 * chibi should embrace modern workflows using Git and open source collaborations. It should be trivial to compile and reference third party libraries directly from source, even if these libraries are checked out and stored somewhere else on disk. Such workflows help to foster open source collaborations, by making it a superior workflow as opposed to using system-wide precompiled and preinstalled libraries.
 
@@ -21,7 +21,7 @@ chibi uses a three-step process when generating projects.
 
 * First, it establishes a workspace. It will look for a chibi-root.txt file, starting at the current working directory, traversing up the file system tree. The top-level chibi-root.txt becomes authorative in setting up the workspace. The workspace defines global options, like whether to include a compiler cache. It also directs chibi to include other workspaces and chibi.txt files.
 * The second step involves chibi building up an internal representation of all apps and libraries and how to build them. This step gives chibi a complete view of everything and to resolve dependencies in the next step.
-* The third step in the process is to generate the CMakeLists.txt file. During this step, dependencies between targets (app and libraries) are resolved and the CMakeListst.txt file is output.
+* The third step in the process is to generate the CMakeLists.txt file. During this step, dependencies between targets (apps and libraries) are resolved and the CMakeLists.txt file is output.
 
 Since chibi will make the top-level chibi-root.txt authorative, this means it will always be possible to override the workspace in case a repository already defines one.
 
