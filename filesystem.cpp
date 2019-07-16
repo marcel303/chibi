@@ -51,6 +51,7 @@
 		return -1;
 	}
 #else
+    #include <stdio.h>
 	#include <unistd.h>
 #endif
 

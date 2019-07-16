@@ -19,3 +19,7 @@ endif (APPLE)
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	target_compile_definitions(chibi PUBLIC LINUX)
 endif ()
+
+if (${ANDROID_ABI})
+	target_compile_definitions(chibi PUBLIC ANDROID)
+endif (APPLE)

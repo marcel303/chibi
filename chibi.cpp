@@ -2654,6 +2654,8 @@ bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool s
 	s_platform = "linux";
 #elif defined(WINDOWS)
 	s_platform = "windows";
+#elif defined(ANDROID)
+	s_platform = "android";
 #else
 	#error unknown platform
 #endif
