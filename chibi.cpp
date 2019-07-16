@@ -2435,7 +2435,7 @@ struct CMakeWriter
 				
 			// todo : add AppleInfo.plist file to chibi repository or auto-generate it
 			// todo : put generated plist file into the output location
-			#if 0
+			#if 1
 				if (s_platform == "macos")
 				{
 					sb.AppendFormat("set_target_properties(%s PROPERTIES MACOSX_BUNDLE_INFO_PLIST \"%s\")\n",
