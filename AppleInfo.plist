@@ -31,6 +31,8 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>${APPLE_GUI_COPYRIGHT}</string>
 	<key>NSHighResolutionCapable</key>
-    <true/>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This application needs access to your Microphone.</string>
 </dict>
 </plist>
