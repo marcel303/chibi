@@ -3,10 +3,40 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
+#define TEMPLATE_FROM_FILE 0
+
 static const char * header_text = R"TEXT(<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+)TEXT";
+
+static const char * body_text = R"TEXT(<key>CFBundleDevelopmentRegion</key>
+<string>English</string>
+<key>CFBundleGetInfoString</key>
+<string>${APPLE_GUI_INFO_STRING}</string>
+<key>CFBundleIconFile</key>
+<string>${APPLE_GUI_ICON}</string>
+<key>CFBundleIdentifier</key>
+<string>${APPLE_GUI_IDENTIFIER}</string>
+<key>CFBundleInfoDictionaryVersion</key>
+<string>6.0</string>
+<key>CFBundleLongVersionString</key>
+<string>${APPLE_GUI_LONG_VERSION_STRING}</string>
+<key>CFBundleName</key>
+<string>${APPLE_GUI_BUNDLE_NAME}</string>
+<key>CFBundlePackageType</key>
+<string>APPL</string>
+<key>CFBundleShortVersionString</key>
+<string>${APPLE_GUI_SHORT_VERSION_STRING}</string>
+<key>CFBundleSignature</key>
+<string>????</string>
+<key>CFBundleVersion</key>
+<string>${APPLE_GUI_BUNDLE_VERSION}</string>
+<key>CSResourcesFileMapped</key>
+<true/>
+<key>NSHumanReadableCopyright</key>
+<string>${APPLE_GUI_COPYRIGHT}</string>
 )TEXT";
 
 static const char * footer_text = R"TEXT(</dict>
@@ -19,7 +49,7 @@ namespace chibi
 		const char * template_filename,
 		const char * app_name,
 		const int flags,
-		const char * output_filename)
+		std::string & out_text)
 	{
 		bool result = false;
 
@@ -29,8 +59,7 @@ namespace chibi
 
 		StringBuilder sb;
 
-		FILE * output_file = nullptr;
-
+	#if TEMPLATE_FROM_FILE
 		if (template_filename != nullptr)
 		{
 			template_file = fopen(template_filename, "rt");
@@ -54,10 +83,15 @@ namespace chibi
 			fclose(template_file);
 			template_file = nullptr;
 		}
+	#endif
 
 		// add header
 
 		sb.Append(header_text);
+		
+		// add body
+		
+		sb.Append(body_text);
 
 		// add template text
 
@@ -99,29 +133,14 @@ namespace chibi
 		// add footer
 
 		sb.Append(footer_text);
+		
+		// done!
 
-		// write output file
-
-		output_file = fopen(output_filename, "wt");
-
-		if (output_file != nullptr)
-		{
-			if (fwrite(sb.text.c_str(), sb.text.size(), 1, output_file) != 1)
-				goto cleanup;
-			
-			fclose(output_file);
-			output_file = nullptr;
-
-			result = true;
-		}
+		out_text = sb.text;
+		
+		result = true;
 
 	cleanup:
-		if (output_file != nullptr)
-		{
-			fclose(output_file);
-			output_file = nullptr;
-		}
-
 		delete [] template_text;
 		template_text = nullptr;
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace chibi
 {
 	enum PlistFlags
@@ -13,5 +15,5 @@ namespace chibi
 		const char * template_filename,
 		const char * app_name,
 		const int flags,
-		const char * output_filename);
+		std::string & out_text);
 }

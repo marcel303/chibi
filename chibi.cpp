@@ -2074,7 +2074,7 @@ struct CMakeWriter
 			// fixme : this should be defined through the user's workspace
 				if (s_platform == "macos")
 				{
-					sb.Append("add_compile_options(-mavx2)\n");
+					//sb.Append("add_compile_options(-mavx2)\n");
 				}
 				
 			// fixme : this should be defined through the user's workspace
@@ -2411,18 +2411,43 @@ struct CMakeWriter
 			#if 1
 				if (s_platform == "macos")
 				{
-					char plist_path[128];
-					if (!concat(plist_path, sizeof(plist_path), "/Users/thecat/framework/chibi/plist-", app->name.c_str(), ".plist"))
+					// generate plist text
+					
+					std::string text;
+					
+					if (!generate_plist(nullptr, app->name.c_str(),
+						kPlistFlag_HighDpi |
+						kPlistFlag_AccessWebcam |
+						kPlistFlag_AccessMicrophone,
+						text))
+					{
+						report_error(nullptr, "failed to generate plist file");
+						return false;
+					}
+					
+					// escape the text so we can use 'file(WRITE ..)' from cmake to create the actual file inside the right directory
+					
+					std::string escaped_text;
+					
+					for (auto & c : text)
+					{
+						if (c == '"')
+						{
+							escaped_text.push_back('\\');
+							escaped_text.push_back('"');
+						}
+						else
+							escaped_text.push_back(c);
+					}
+					
+					char plist_path[PATH_MAX];
+					if (!concat(plist_path, sizeof(plist_path), generated_path, "/", app->name.c_str(), ".plist"))
 					{
 						report_error(nullptr, "failed to create plist path");
 						return false;
 					}
 					
-					if (!generate_plist("/Users/thecat/framework/chibi/AppleInfo.plist", app->name.c_str(), kPlistFlag_HighDpi | kPlistFlag_AccessWebcam | kPlistFlag_AccessMicrophone, plist_path))
-					{
-						report_error(nullptr, "failed to generate plist file");
-						return false;
-					}
+					sb.AppendFormat("file(WRITE \"%s\" \"%s\")\n", plist_path, escaped_text.c_str());
 					
 					sb.AppendFormat("set_target_properties(%s PROPERTIES MACOSX_BUNDLE_INFO_PLIST \"%s\")\n",
 						app->name.c_str(),
