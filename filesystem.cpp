@@ -1,5 +1,8 @@
 #include "filesystem.h"
+#include "stringhelpers.h"
 #include <string.h>
+
+using namespace chibi;
 
 #ifndef _MSC_VER
 	#include <dirent.h>
@@ -54,8 +57,6 @@
     #include <stdio.h>
 	#include <unistd.h>
 #endif
-
-bool concat(char * dst, int dstSize, const char * s1, const char * s2 = nullptr, const char * s3 = nullptr, const char * s4 = nullptr);
 
 namespace chibi_filesystem
 {

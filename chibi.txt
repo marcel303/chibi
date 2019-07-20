@@ -1,6 +1,9 @@
 library libchibi
 	add_files chibi.cpp chibi.h
 	add_files filesystem.cpp filesystem.h
+	add_files plistgenerator.cpp plistgenerator.h
+	add_files stringbuilder.cpp stringbuilder.h
+	add_files stringhelpers.h
 	header_path . expose
 
 	with_platform linux compile_definition LINUX *

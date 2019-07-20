@@ -1,4 +1,6 @@
 #include "filesystem.h"
+#include "plistgenerator.h"
+#include "stringbuilder.h"
 #include "stringhelpers.h"
 
 #include <algorithm>
@@ -12,6 +14,7 @@
 #include <string.h>
 #include <vector>
 
+using namespace chibi;
 using namespace chibi_filesystem;
 
 /*
@@ -81,8 +84,6 @@ brew install ccache
 #endif
 
 // todo : redesign the embed_framework option
-
-#define STRING_BUFFER_SIZE (1 << 12)
 
 static ssize_t s_current_line_length = 0; // fixme : make safe for concurrent use of library version of chibi
 
@@ -340,37 +341,6 @@ static ChibiLibrary * s_currentLibrary = nullptr;
 
 static std::string s_platform;
 static std::string s_platform_full;
-
-struct StringBuilder
-{
-	std::string text;
-	
-	StringBuilder()
-	{
-		text.reserve(1 << 16);
-	}
-	
-	void Append(const char c)
-	{
-		text.push_back(c);
-	}
-	
-	void Append(const char * text)
-	{
-		this->text.append(text);
-	}
-	
-	void AppendFormat(const char * format, ...)
-	{
-		va_list va;
-		va_start(va, format);
-		char text[STRING_BUFFER_SIZE];
-		vsprintf_s(text, sizeof(text), format, va);
-		va_end(va);
-
-		Append(text);
-	}
-};
 
 static bool is_platform(const char * platform)
 {
@@ -2085,11 +2055,13 @@ struct CMakeWriter
 				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
 				sb.Append("\tif (NOT PkgConfig_FOUND)\n");
 				sb.Append("\t\tmessage(FATAL_ERROR \"PkgConfig not found\")\n");
-				sb.Append("\tendif ()\n");
+				sb.Append("\tendif (NOT PkgConfig_FOUND)\n");
 				sb.Append("endif (UNIX)\n");
 				sb.Append("\n");
 				
 				sb.Append("set(CMAKE_MACOSX_RPATH ON)\n");
+				sb.Append("\n");
+				sb.Append("set(CMAKE_OSX_DEPLOYMENT_TARGET 10.11)\n");
 				sb.Append("\n");
 
 				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND NOT CMAKE_CL_64)\n");
@@ -2337,8 +2309,9 @@ struct CMakeWriter
 					sb.AppendFormat("set_target_properties(%s PROPERTIES FOLDER %s)\n",
 						app->name.c_str(),
 						app->group_name.c_str());
+					sb.Append("\n");
 				}
-				
+
 				if (!app->resource_path.empty())
 				{
 					if (s_platform == "macos")
@@ -2438,9 +2411,22 @@ struct CMakeWriter
 			#if 1
 				if (s_platform == "macos")
 				{
+					char plist_path[128];
+					if (!concat(plist_path, sizeof(plist_path), "/Users/thecat/framework/chibi/plist-", app->name.c_str(), ".plist"))
+					{
+						report_error(nullptr, "failed to create plist path");
+						return false;
+					}
+					
+					if (!generate_plist("/Users/thecat/framework/chibi/AppleInfo.plist", app->name.c_str(), kPlistFlag_HighDpi | kPlistFlag_AccessWebcam | kPlistFlag_AccessMicrophone, plist_path))
+					{
+						report_error(nullptr, "failed to generate plist file");
+						return false;
+					}
+					
 					sb.AppendFormat("set_target_properties(%s PROPERTIES MACOSX_BUNDLE_INFO_PLIST \"%s\")\n",
 						app->name.c_str(),
-						"/Users/thecat/framework/chibi/AppleInfo.plist");
+						plist_path);
 					sb.Append("\n");
 				}
 			#endif
@@ -2473,7 +2459,7 @@ struct CMakeWriter
 					
 					sb.Append("\n");
 				}
-				
+
 				if (!output(f, sb))
 					return false;
 			}

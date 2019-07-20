@@ -6,7 +6,7 @@ project(chibi)
 
 # --- chibi ---
 
-add_executable(chibi chibi.cpp chibi.h filesystem.cpp filesystem.h main.cpp)
+add_executable(chibi chibi.cpp chibi.h filesystem.cpp filesystem.h plistgenerator.cpp plistgenerator.h stringbuilder.cpp stringbuilder.h stringhelpers.h main.cpp)
 
 if (WIN32)
 	target_compile_definitions(chibi PUBLIC WINDOWS)
@@ -22,4 +22,4 @@ endif ()
 
 if (${ANDROID_ABI})
 	target_compile_definitions(chibi PUBLIC ANDROID)
-endif (APPLE)
+endif ()
