@@ -2014,7 +2014,8 @@ struct CMakeWriter
 			{
 				StringBuilder sb;
 				
-				sb.Append("cmake_minimum_required(VERSION 3.6)\n");
+				// cmake 3.8 requirement: need COMMAND_EXPAND_LISTS to work for conditional custom build steps
+				sb.Append("cmake_minimum_required(VERSION 3.8)\n");
 				sb.Append("\n");
 				sb.Append("set(CMAKE_CXX_STANDARD 11)\n");
 				sb.Append("\n");
