@@ -2014,9 +2014,19 @@ struct CMakeWriter
 			{
 				StringBuilder sb;
 				
-				// cmake 3.8 requirement: need COMMAND_EXPAND_LISTS to work for conditional custom build steps
-				sb.Append("cmake_minimum_required(VERSION 3.8)\n");
-				sb.Append("\n");
+				if (s_platform == "macos")
+				{
+					// cmake 3.8 requirement: need COMMAND_EXPAND_LISTS to work for conditional custom build steps
+					sb.Append("cmake_minimum_required(VERSION 3.8)\n");
+					sb.Append("\n");
+				}
+				else
+				{
+					// note : cmake 3.7 is the current version installed on Raspbian
+					sb.Append("cmake_minimum_required(VERSION 3.7)\n");
+					sb.Append("\n");
+				}
+				
 				sb.Append("set(CMAKE_CXX_STANDARD 11)\n");
 				sb.Append("\n");
 				
