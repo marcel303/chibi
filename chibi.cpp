@@ -1919,6 +1919,104 @@ struct CMakeWriter
 		
 		return true;
 	}
+
+	static bool write_create_windows_app_archive(const ChibiInfo & chibi_info, StringBuilder & sb, const ChibiLibrary & app)
+	{
+		std::vector<ChibiLibraryDependency> library_dependencies;
+		
+		if (!gather_all_library_dependencies(chibi_info, app, library_dependencies))
+			return false;
+
+		// create a directory where to copy the executable, distribution and data files
+
+		sb.AppendFormat(
+			"add_custom_command(\n" \
+				"\tTARGET %s POST_BUILD\n" \
+				"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+				app.name.c_str(),
+				app.name.c_str());
+
+		// copy the generated executable
+
+		sb.AppendFormat(
+			"add_custom_command(\n" \
+				"\tTARGET %s POST_BUILD\n" \
+				"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:%s> \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+			app.name.c_str(),
+			app.name.c_str(),
+			app.name.c_str());
+
+		for (auto & library_dependency : library_dependencies)
+		{
+			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+			{
+				const ChibiLibrary * library = chibi_info.find_library(library_dependency.name.c_str());
+				
+				// copy generated DLL files
+
+				if (library->shared)
+				{
+					sb.AppendFormat(
+						"add_custom_command(\n" \
+							"\tTARGET %s POST_BUILD\n" \
+							"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
+							"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
+						app.name.c_str(),
+						library_dependency.name.c_str(),
+						app.name.c_str(),
+						library_dependency.name.c_str());
+				}
+
+				// copy the distribution files
+
+				for (auto & dist_file : library->dist_files)
+				{
+					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
+					
+					const char * filename;
+				
+					auto i = dist_file.find_last_of('/');
+				
+					if (i == std::string::npos)
+						filename = dist_file.c_str();
+					else
+						filename = &dist_file[i + 1];
+
+					sb.AppendFormat(
+						"add_custom_command(\n" \
+							"\tTARGET %s POST_BUILD\n" \
+							"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+						app.name.c_str(),
+						dist_file.c_str(),
+						app.name.c_str());
+				}
+			}
+		}
+
+		// copy resources
+
+		if (app.resource_path.empty() == false)
+		{
+			sb.AppendFormat(
+				"add_custom_command(\n" \
+					"\tTARGET %s POST_BUILD\n" \
+					"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
+					app.name.c_str(),
+					app.name.c_str());
+
+			sb.AppendFormat(
+				"add_custom_command(\n" \
+					"\tTARGET %s POST_BUILD\n" \
+					"\tCOMMAND ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
+				app.name.c_str(),
+				app.resource_path.c_str(),
+				app.name.c_str());
+		}
+
+		sb.Append("\n");
+
+		return true;
+	}
 	
 	template <typename S>
 	static bool output(FILE * f, S & sb)
@@ -2385,10 +2483,15 @@ struct CMakeWriter
 					}
 					else
 					{
-						sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\"%s\")\n",
-							app->name.c_str(),
-							app->resource_path.c_str());
-						sb.Append("\n");
+                        sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
+                            app->name.c_str(),
+                            app->resource_path.c_str());
+                        sb.Append("\n");
+
+                        sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<CONFIG:Distribution>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
+                            app->name.c_str(),
+                            "data");
+                        sb.Append("\n");
 					}
 				}
 				
@@ -2495,6 +2598,13 @@ struct CMakeWriter
 					
 					sb.Append("\n");
 				}
+
+			#if 0
+				if (s_platform == "windows")
+				{
+					write_create_windows_app_archive(chibi_info, sb, *app);
+				}
+			#endif
 
 				if (!output(f, sb))
 					return false;
