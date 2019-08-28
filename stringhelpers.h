@@ -55,11 +55,18 @@ namespace chibi
 		
 		if (line > word)
 		{
+			// null-terminate the extracted text
+			
 			if (*line != 0)
 			{
 				*line = 0;
 				line++;
 			}
+
+			// make sure to increment the line pointer until we reach non-whitespace territory again
+
+			while (is_whitespace(*line))
+				line++;
 			
 			return true;
 		}
