@@ -259,6 +259,8 @@ struct ChibiLibrary
 	std::vector<std::string> resource_excludes;
 
 	std::vector<std::string> dist_files;
+
+	std::vector<std::string> license_files;
 	
 	void dump_info() const
 	{
@@ -382,6 +384,7 @@ void show_chibi_syntax()
 	show_syntax_elem("group <group_name>", "specify the group for files to be added subsequently using add_files or scan_files");
 	show_syntax_elem("header_path <path> [expose]", "specify a header search path. when [expose] is set, the search path will be propagated to all dependent targets");
 	show_syntax_elem("resource_path <path>", "specify the resource_path. CHIBI_RESOURCE_PATH will be set appropriately to the given path for debug and release builds. for the distribution build type, files located at resource_path will be bundled with the app and CHIBI_RESOURCE_PATH will be set to the relative search path within the bundle");
+	show_syntax_elem("license_file <path>", "specify license file(s) for a library");
 	show_syntax_elem("scan_files <extension_or_wildcard> [path <path>].. [traverse] [group <group_name>] [conglomerate <conglomerate_file>]", "adds files by scanning the given path or the path of the current chibi file. files will be filtered using the extension or wildcard pattern provided. [path] can be used to specify a specific folder to look inside. [traverse] may be set to recursively look for files down the directory hierarchy. when [group] is specified, files found through the scan operation will be grouped by this name in generated ide project files. when [conglomerate] is set, the files will be concatenated into this files, and the generated file will be added instead. [conglomerate] may be used to speed up compile times by compiling a set of files in one go");
 	
 }
@@ -1309,6 +1312,50 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						s_currentLibrary->resource_excludes = excludes;
 					}
 				}
+				else if (eat_word(linePtr, "license_file"))
+				{
+					if (s_currentLibrary == nullptr)
+					{
+						report_error(line, "license_file without a target");
+						return false;
+					}
+					else if (s_currentLibrary->isExecutable)
+					{
+						report_error(line, "license_file target is not a library");
+						return false;
+					}
+					else
+					{
+						const char * path;
+						
+						if (!eat_word_v2(linePtr, path))
+						{
+							report_error(line, "missing path");
+							return false;
+						}
+						
+						char full_path[PATH_MAX];
+
+						if (is_absolute_path(path))
+						{
+							if (!copy_string(full_path, sizeof(full_path), path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+						else
+						{
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+
+						s_currentLibrary->license_files.push_back(path);
+					}
+				}
 				else if (eat_word(linePtr, "group"))
 				{
 					if (s_currentLibrary == nullptr)
@@ -1368,7 +1415,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 				{
 					if (linePtr[i] != 0)
 					{
-						report_error(line, "unexpected text at end of line");
+						report_error(line, "unexpected text at end of line: %s", linePtr + i);
 						return false;
 					}
 				}
