@@ -389,6 +389,14 @@ void show_chibi_syntax()
 	
 }
 
+static bool process_chibi_root_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group, const bool skip_file_scan);
+static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group, const bool skip_file_scan);
+
+static bool process_chibi_root_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group, const bool skip_file_scan)
+{
+	return process_chibi_file(chibi_info, filename, current_group, skip_file_scan);
+}
+
 static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group, const bool skip_file_scan)
 {
 	ChibiFileScope chibi_scope(filename);
@@ -519,7 +527,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const int length = s_current_line_length;
 						
-						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan))
+						if (!process_chibi_root_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan))
 							return false;
 						
 						s_current_line_length = length;
@@ -1351,6 +1359,12 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 								report_error(line, "failed to create absolute path");
 								return false;
 							}
+						}
+
+						if (file_exist(full_path) == false)
+						{
+							report_error(line, "failed to find license file: %s", path);
+							return false;
 						}
 
 						s_currentLibrary->license_files.push_back(path);
@@ -2765,7 +2779,7 @@ bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool s
 
 	std::string current_group;
 	
-	if (!process_chibi_file(chibi_info, build_root, current_group, skip_file_scan))
+	if (!process_chibi_root_file(chibi_info, build_root, current_group, skip_file_scan))
 	{
 		report_error(nullptr, "an error occured while scanning for chibi files");
 		return false;
