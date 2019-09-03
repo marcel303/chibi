@@ -27,9 +27,10 @@ bool find_chibi_build_root(const char * source_path, char * build_root, const in
  * @param dst_path The target location for the generated CMakeLists.txt file.
  * @param targets One or more optional target filters, to limit the scope of the generated CMakeLists.txt file.
  * @param num_targets The number of elements of the targets array. CMake apps and libraries will be generated for all targets when zero.
+ * @param platform The platform for which to generate the CMakeLists.txt file. By default this is determined by the OS for which chibi is compiled.
  * @return True if the CMakeLists.txt file was successfully generated. False otherwise.
  */
-bool chibi_generate(const char * cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets);
+bool chibi_generate(const char * cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets, const char * platform = nullptr);
 
 /**
  * Lists all of the app and library targets found by parsing the given build root.

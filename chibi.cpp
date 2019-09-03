@@ -2837,24 +2837,29 @@ static bool get_current_working_directory(char * out_cwd, const int out_cwd_size
 	return true;
 }
 
-bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool skip_file_scan)
+bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool skip_file_scan, const char * platform)
 {
 	// set the platform name
 	
-#if defined(MACOS)
-	s_platform = "macos";
-#elif defined(LINUX)
-	s_platform = "linux";
-#elif defined(WINDOWS)
-	s_platform = "windows";
-#elif defined(ANDROID)
-	s_platform = "android";
-#else
-	#error unknown platform
-#endif
-
-#if defined(LINUX)
+	if (platform != nullptr)
 	{
+		s_platform = platform;
+	}
+	else
+	{
+	#if defined(MACOS)
+		s_platform = "macos";
+	#elif defined(LINUX)
+		s_platform = "linux";
+	#elif defined(WINDOWS)
+		s_platform = "windows";
+	#elif defined(ANDROID)
+		s_platform = "android";
+	#else
+		#error unknown platform
+	#endif
+
+	#if defined(LINUX)
 		bool isRaspberryPi = false;
 		
 		FILE * f = fopen("/proc/device-tree/model", "rt");
@@ -2884,8 +2889,8 @@ bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool s
 		
 		if (isRaspberryPi)
 			s_platform_full = "linux.raspberry-pi";
+	#endif
 	}
-#endif
 
 	std::string current_group;
 	
@@ -2900,7 +2905,7 @@ bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool s
 	return true;
 }
 
-bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets)
+bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst_path, const char ** targets, const int numTargets, const char * platform)
 {
 	ChibiInfo chibi_info;
 	
@@ -2957,7 +2962,7 @@ bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst
 	printf("build_root: %s\n", build_root);
 #endif
 
-	if (chibi_process(chibi_info, build_root, false) == false)
+	if (chibi_process(chibi_info, build_root, false, platform) == false)
 		return false;
 	
 	//
@@ -2987,7 +2992,7 @@ bool list_chibi_targets(const char * build_root, std::vector<std::string> & libr
 	
 	//
 	
-	if (chibi_process(chibi_info, build_root, true) == false)
+	if (chibi_process(chibi_info, build_root, true, nullptr) == false)
 		return false;
 	
 	//

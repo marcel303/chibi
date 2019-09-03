@@ -83,6 +83,8 @@ int main(int argc, const char * argv[])
 	Mode mode = kMode_Unknown;
 	
 	std::set<std::string> build_targets;
+
+	const char * platform = nullptr;
 	
 	while (argc > 0)
 	{
@@ -118,6 +120,14 @@ int main(int argc, const char * argv[])
 			
 			build_targets.insert(target);
 		}
+		else if (!strcmp(option, "-platform"))
+		{
+			if (!eat_arg(argc, argv, platform))
+			{
+				report_error("missing platform name: %s", option);
+				return -1;
+			}
+		}
 		else
 		{
 			report_error("unknown command line option: %s", option);
@@ -139,7 +149,7 @@ int main(int argc, const char * argv[])
 	for (auto & target : build_targets)
 		targets[index++] = target.c_str();
 	
-	if (chibi_generate(cwd, src_path, dst_path, targets, numTargets) == false)
+	if (chibi_generate(cwd, src_path, dst_path, targets, numTargets, platform) == false)
 		return -1;
 	
 	return 0;
