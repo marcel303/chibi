@@ -1972,6 +1972,20 @@ struct CMakeWriter
 							library_dependency.name.c_str(),
 							library_dependency.name.c_str());
 					}
+					else if (s_platform == "iphoneos")
+					{
+						write_set_ios_bundle_path(sb, app.name.c_str());
+						
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${BUNDLE_PATH}/$<TARGET_FILE_NAME:%s>\"\n" \
+								"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
+							app.name.c_str(),
+							library_dependency.name.c_str(),
+							library_dependency.name.c_str(),
+							library_dependency.name.c_str());
+					}
 					
 					// todo : also copy generated (dll) files on Windows (?)
 				}
@@ -2107,6 +2121,11 @@ struct CMakeWriter
 		sb.AppendFormat("else ()\n");
 		sb.AppendFormat("\tset(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/%s.app\")\n", app_name);
 		sb.AppendFormat("endif ()\n");
+	}
+
+	static void write_set_ios_bundle_path(StringBuilder & sb, const char * app_name)
+	{
+		sb.AppendFormat("\tset(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>\")\n", app_name);
 	}
 	
 	bool write(const ChibiInfo & chibi_info, const char * output_filename)
@@ -2497,7 +2516,7 @@ struct CMakeWriter
 						//        this is really just a workaround/hack for missing behavior
 						
 						const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
-						
+
 						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Resources\")\n");
 						sb.AppendFormat(
 							"add_custom_command(\n" \
@@ -2542,6 +2561,58 @@ struct CMakeWriter
 							app->resource_path.c_str());
 						sb.Append("\n");
 					}
+					else if (s_platform == "iphoneos")
+					{
+						write_set_ios_bundle_path(sb, app->name.c_str());
+
+						// use rsync to copy resources
+						
+						// but first make sure the target directory exists
+						
+						const char * resource_path = "${BUNDLE_PATH}";
+						
+						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"%s\")\n", resource_path);
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
+								"\tDEPENDS \"%s\")\n",
+							app->name.c_str(),
+							app->resource_path.c_str());
+						
+						std::string exclude_args;
+
+						if (app->resource_excludes.empty() == false)
+						{
+							for (auto & exclude : app->resource_excludes)
+							{
+								exclude_args += "--exclude '";
+								exclude_args += exclude;
+								exclude_args += "' ";
+							}
+						}
+
+						// rsync
+						sb.AppendFormat("set(args rsync -r %s \"%s/\" \"%s\")\n",
+								exclude_args.c_str(),
+								app->resource_path.c_str(),
+								resource_path);
+						sb.AppendFormat(
+							"add_custom_command(\n" \
+								"\tTARGET %s POST_BUILD\n" \
+								"\tCOMMAND \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
+								"\tDEPENDS \"%s\")\n",
+							app->name.c_str(),
+							app->resource_path.c_str());
+					
+						sb.Append("\n");
+						
+						sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\".\")\n",
+							app->name.c_str());
+						sb.Append("\n");
+					}
 					else
 					{
                         sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
@@ -2584,7 +2655,7 @@ struct CMakeWriter
 			// todo : add AppleInfo.plist file to chibi repository or auto-generate it
 			// todo : put generated plist file into the output location
 			#if 1
-				if (s_platform == "macos")
+				if (s_platform == "macos" || s_platform == "iphoneos")
 				{
 					// generate plist text
 					
@@ -2622,8 +2693,17 @@ struct CMakeWriter
 						return false;
 					}
 					
-					sb.AppendFormat("file(WRITE \"%s\" \"%s\")\n", plist_path, escaped_text.c_str());
 					
+					if (s_platform == "iphoneos")
+					{
+						// todo : imagine a clean way to set the identifier
+						sb.AppendFormat("set(APPLE_GUI_IDENTIFIER \"com.chibi.%s\")\n",
+							app->name.c_str());
+					}
+
+				// todo : use file copy/append ? write evals the subst variables early..
+					sb.AppendFormat("file(WRITE \"%s\" \"%s\")\n", plist_path, escaped_text.c_str());
+
 					sb.AppendFormat("set_target_properties(%s PROPERTIES MACOSX_BUNDLE_INFO_PLIST \"%s\")\n",
 						app->name.c_str(),
 						plist_path);
