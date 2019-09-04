@@ -2170,6 +2170,15 @@ struct CMakeWriter
 					return a.filename < b.filename;
 				});
 		}
+
+		// turn shared libraries into non-shared for iphoneos, since I didn't manage
+		// to do code signing propertly yet, and iphoneos refuses to load our .dylibs
+		
+		if (s_platform == "iphoneos")
+		{
+			for (auto & library : libraries)
+				library->shared = false;
+		}
 		
 		// write CMake output
 		
@@ -2739,7 +2748,7 @@ struct CMakeWriter
 					
 					sb.Append("\n");
 				}
-
+				
 			#if 0
 				if (s_platform == "windows")
 				{
