@@ -2425,6 +2425,7 @@ struct CMakeWriter
 							
 							header_path.alias_through_copy_path = alias_path;
 							
+							// note : file(COPY.. ) will check timestamps and avoid the copy if source and destination have matching timestamps
 							sb.AppendFormat("file(COPY \"%s/\" DESTINATION \"%s\")\n",
 								header_path.path.c_str(),
 								copy_path);
