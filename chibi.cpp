@@ -697,8 +697,6 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const char * group = nullptr;
 						
-						const char * merge_into = nullptr;
-						
 						const char * conglomerate = nullptr;
 						
 						for (;;)
@@ -744,14 +742,6 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 								if (!eat_word_v2(linePtr, group))
 								{
 									report_error(line, "missing group name");
-									return false;
-								}
-							}
-							else if (!strcmp(option, "merge_into"))
-							{
-								if (!eat_word_v2(linePtr, merge_into))
-								{
-									report_error(line, "missing merge_into name");
 									return false;
 								}
 							}
@@ -836,71 +826,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							
 							library_files.push_back(file);
 						}
-						
-						if (merge_into != nullptr)
-						{
-							char full_path[PATH_MAX];
-							if (!concat(full_path, sizeof(full_path), chibi_path, "/", merge_into))
-							{
-								report_error(line, "failed to create absolute path");
-								return false;
-							}
-							
-							// todo : use write_if_different to avoid marking files dirty unncessarily
-							
-							FileHandle target_file(full_path, "wt");
-							
-							if (target_file == nullptr)
-							{
-								report_error(line, "failed to open merge_into target");
-								return false;
-							}
-							else
-							{
-								for (auto & library_file : library_files)
-								{
-									library_file.compile = false;
-									
-									FileHandle source_file(library_file.filename.c_str(), "rt");
-									
-									if (source_file == nullptr)
-									{
-										report_error(line, "failed to open file: %s", library_file.filename.c_str());
-										return false;
-									}
-									
-									char * source_line = nullptr;
-									size_t source_lineSize = 0;
-									
-									for (;;)
-									{
-										auto s = getline(&source_line, &source_lineSize, source_file);
-										
-										if (s < 0)
-											break;
-										
-										fprintf(target_file, "%s", source_line);
-									}
-									
-									free(source_line);
-									source_line = nullptr;
-									
-									source_file.close();
-								}
-								
-								target_file.close();
-							}
-							
-							ChibiLibraryFile file;
-							
-							file.filename = full_path;
-							
-							if (group != nullptr)
-								file.group = group;
-							
-							library_files.push_back(file);
-						}
-						
+												
 						if (conglomerate != nullptr)
 						{
 							char full_path[PATH_MAX];
