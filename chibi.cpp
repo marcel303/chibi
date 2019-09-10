@@ -2257,6 +2257,8 @@ struct CMakeWriter
 			{
 				StringBuilder sb;
 				
+				sb.Append("# auto-generated. do not hand-edit\n\n");
+				
 				if (s_platform == "macos")
 				{
 					// cmake 3.8 requirement: need COMMAND_EXPAND_LISTS to work for conditional custom build steps
