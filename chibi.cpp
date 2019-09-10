@@ -648,11 +648,27 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 					}
 					else
 					{
+						std::vector<ChibiLibraryFile> library_files;
+						
+						const char * group = nullptr;
+						
+						const char * conglomerate = nullptr;
+						
+						bool done = false;
+						
+						// parse file list
+						
 						for (;;)
 						{
 							const char * filename;
 							
 							if (!eat_word_v2(linePtr, filename))
+							{
+								done = true;
+								break;
+							}
+							
+							if (!strcmp(filename, "-"))
 								break;
 							
 							char full_path[PATH_MAX];
@@ -666,8 +682,78 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							
 							file.filename = full_path;
 							
-							s_currentLibrary->files.push_back(file);
+							library_files.push_back(file);
 						}
+						
+						// parse options
+						
+						if (done == false)
+						{
+							for (;;)
+							{
+								const char * option;
+								
+								if (!eat_word_v2(linePtr, option))
+								{
+									done = true;
+									break;
+								}
+								
+								if (!strcmp(option, "group"))
+								{
+									if (!eat_word_v2(linePtr, group))
+									{
+										report_error(line, "missing group name");
+										return false;
+									}
+								}
+								else if (!strcmp(option, "conglomerate"))
+								{
+									if (!eat_word_v2(linePtr, conglomerate))
+									{
+										report_error(line, "missing conglomerate target");
+										return false;
+									}
+								}
+								else
+								{
+									report_error(line, "unknown option: %s", option);
+									return false;
+								}
+							}
+						}
+						
+						if (group != nullptr)
+						{
+							for (auto & library_file : library_files)
+								library_file.group = group;
+						}
+						
+						if (conglomerate != nullptr)
+						{
+							char full_path[PATH_MAX];
+							if (!concat(full_path, sizeof(full_path), chibi_path, "/", conglomerate))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+							
+							for (auto & library_file : library_files)
+							{
+								library_file.conglomerate_filename = full_path;
+								library_file.compile = false;
+							}
+							
+							if (group != nullptr)
+							{
+								s_currentLibrary->conglomerate_groups[full_path] = group;
+							}
+						}
+						
+						s_currentLibrary->files.insert(
+							s_currentLibrary->files.end(),
+							library_files.begin(),
+							library_files.end());
 					}
 				}
 				else if (eat_word(linePtr, "scan_files"))
@@ -826,7 +912,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							
 							library_files.push_back(file);
 						}
-												
+						
 						if (conglomerate != nullptr)
 						{
 							char full_path[PATH_MAX];
