@@ -173,6 +173,8 @@ struct ChibiLibraryFile
 	
 	std::string group;
 	
+	std::string conglomerate_filename;
+	
 	bool compile = true;
 };
 
@@ -254,6 +256,8 @@ struct ChibiLibrary
 	std::vector<ChibiHeaderPath> header_paths;
 	
 	std::vector<ChibiCompileDefinition> compile_definitions;
+	
+	std::map<std::string, std::string> conglomerate_groups; // best-guess group names for conglomerate files
 	
 	std::string resource_path;
 	std::vector<std::string> resource_excludes;
@@ -899,17 +903,6 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						if (conglomerate != nullptr)
 						{
-							StringBuilder sb;
-							
-							sb.Append("// auto-generated. do not hand-edit\n\n");
-								
-							for (auto & library_file : library_files)
-							{
-								library_file.compile = false;
-								
-								sb.AppendFormat("#include \"%s\"\n", library_file.filename.c_str());
-							}
-							
 							char full_path[PATH_MAX];
 							if (!concat(full_path, sizeof(full_path), chibi_path, "/", conglomerate))
 							{
@@ -917,20 +910,16 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 								return false;
 							}
 							
-							if (!write_if_different(sb.text.c_str(), full_path))
+							for (auto & library_file : library_files)
 							{
-								report_error(line, "failed to write conglomerate file. path: %s", full_path);
-								return false;
+								library_file.conglomerate_filename = full_path;
+								library_file.compile = false;
 							}
 							
-							ChibiLibraryFile file;
-							
-							file.filename = full_path;
-							
 							if (group != nullptr)
-								file.group = group;
-							
-							library_files.push_back(file);
+							{
+								s_currentLibrary->conglomerate_groups[full_path] = group;
+							}
 						}
 						
 						s_currentLibrary->files.insert(
@@ -2169,6 +2158,61 @@ struct CMakeWriter
 				{
 					return a.filename < b.filename;
 				});
+		}
+		
+		// generate conglomerate files
+		
+		for (auto * library : libraries)
+		{
+			// build a set of conglomerate files and the files which belong to them
+			
+			std::map<std::string, std::vector<ChibiLibraryFile*>> files_by_conglomerate;
+			
+			for (auto & library_file : library->files)
+			{
+				if (library_file.conglomerate_filename.empty())
+					continue;
+				
+				auto & files = files_by_conglomerate[library_file.conglomerate_filename];
+				
+				files.push_back(&library_file);
+			}
+			
+			// generate conglomerate files
+			
+			for (auto & files_by_conglomerate_itr : files_by_conglomerate)
+			{
+				auto & conglomerate_filename = files_by_conglomerate_itr.first;
+				auto & library_files = files_by_conglomerate_itr.second;
+				
+				StringBuilder sb;
+			
+				sb.Append("// auto-generated. do not hand-edit\n\n");
+
+				for (auto * library_file : library_files)
+				{
+					assert(library_file->compile == false);
+					
+					sb.AppendFormat("#include \"%s\"\n", library_file->filename.c_str());
+				}
+
+				if (!write_if_different(sb.text.c_str(), conglomerate_filename.c_str()))
+				{
+					report_error(nullptr, "failed to write conglomerate file. path: %s", conglomerate_filename.c_str());
+					return false;
+				}
+				
+				// add the conglomerate file to the list of library files
+				
+				ChibiLibraryFile file;
+				
+				file.filename = conglomerate_filename;
+				
+				if (library->conglomerate_groups.count(conglomerate_filename) != 0)
+					file.group = library->conglomerate_groups[conglomerate_filename];
+	
+				library->files.push_back(file);
+			}
 		}
 
 		// turn shared libraries into non-shared for iphoneos, since I didn't manage
