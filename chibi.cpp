@@ -380,7 +380,7 @@ void show_chibi_syntax()
 	printf("\n");
 	printf("chibi syntax (within app or library context):\n");
 	show_syntax_elem("add_dist_files <file>..", "adds one or more files to to be bundled with the application, when the build type is set to distribution");
-	show_syntax_elem("add_files <file>..", "adds one or more files to compile");
+	show_syntax_elem("add_files <file>.. [- [conglomerate <conglomerate_file>]]", "adds one or more files to compile. the list of files may optionally be terminated by '-', after which further options may be specified");
 	show_syntax_elem("compile_definition <name> <value> [expose]", "adds a compile definition. when <value> is set to *, the compile definition is merely defined, without a value. when <expose> is set, the compile_definition is visible to all targets that depends on the current target");
 	show_syntax_elem("depend_library <library_name> [local | find]", "adds a target dependency. <library_name> may refer to a chibi library target, or to a pre-built library or system library. when [local] is set, the file is interpreted as a pre-built library to be found at the given location, relative to the current chibi file. when [find] is set, the library will be searched for on the system");
 	show_syntax_elem("depend_package <package_name>", "depends on a package, to be found using one of cmake's find_package scripts. <package_name> defines the name of the cmake package script");
@@ -390,7 +390,7 @@ void show_chibi_syntax()
 	show_syntax_elem("resource_path <path>", "specify the resource_path. CHIBI_RESOURCE_PATH will be set appropriately to the given path for debug and release builds. for the distribution build type, files located at resource_path will be bundled with the app and CHIBI_RESOURCE_PATH will be set to the relative search path within the bundle");
 	show_syntax_elem("license_file <path>", "specify license file(s) for a library");
 	show_syntax_elem("scan_files <extension_or_wildcard> [path <path>].. [traverse] [group <group_name>] [conglomerate <conglomerate_file>]", "adds files by scanning the given path or the path of the current chibi file. files will be filtered using the extension or wildcard pattern provided. [path] can be used to specify a specific folder to look inside. [traverse] may be set to recursively look for files down the directory hierarchy. when [group] is specified, files found through the scan operation will be grouped by this name in generated ide project files. when [conglomerate] is set, the files will be concatenated into this files, and the generated file will be added instead. [conglomerate] may be used to speed up compile times by compiling a set of files in one go");
-	
+	show_syntax_elem("push_conglomerate <name>", "pushes a conglomerate file. files will automatically be added to the given conglomerate file. push_conglomerate must be followed by a matching pop_conglomerate");
 }
 
 static bool process_chibi_root_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group, const bool skip_file_scan);
@@ -409,6 +409,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 	
 	std::vector<std::string> group_stack;
 	group_stack.push_back(current_group);
+	
+	std::vector<std::string> conglomerate_stack;
 	
 	char chibi_path[PATH_MAX];
 
@@ -652,7 +654,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const char * group = nullptr;
 						
-						const char * conglomerate = nullptr;
+						const char * conglomerate =
+							conglomerate_stack.empty()
+							? nullptr
+							: conglomerate_stack.back().c_str();
 						
 						bool done = false;
 						
@@ -783,7 +788,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const char * group = nullptr;
 						
-						const char * conglomerate = nullptr;
+						const char * conglomerate =
+							conglomerate_stack.empty()
+							? nullptr
+							: conglomerate_stack.back().c_str();
 						
 						for (;;)
 						{
@@ -1417,6 +1425,28 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							s_currentLibrary->dist_files.push_back(full_path);
 						}
 					}
+				}
+				else if (eat_word(linePtr, "push_conglomerate"))
+				{
+					const char * file;
+					
+					if (!eat_word_v2(linePtr, file))
+					{
+						report_error(line, "missing conglomerate file");
+						return false;
+					}
+					
+					conglomerate_stack.push_back(file);
+				}
+				else if (eat_word(linePtr, "pop_conglomerate"))
+				{
+					if (conglomerate_stack.empty())
+					{
+						report_error(line, "no conglomerate file left to pop");
+						return false;
+					}
+
+					conglomerate_stack.pop_back();
 				}
 				else
 				{
@@ -2330,7 +2360,7 @@ struct CMakeWriter
 			// fixme : this should be defined through the user's workspace
 				if (s_platform == "macos")
 				{
-					//sb.Append("add_compile_options(-mavx2)\n");
+					sb.Append("add_compile_options(-mavx2)\n");
 				}
 				
 			// fixme : this should be defined through the user's workspace
