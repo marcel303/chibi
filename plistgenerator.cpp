@@ -140,7 +140,9 @@ namespace chibi
 		
 		result = true;
 
+#if TEMPLATE_FROM_FILE
 	cleanup:
+#endif
 		delete [] template_text;
 		template_text = nullptr;
 
