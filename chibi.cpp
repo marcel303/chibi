@@ -1,3 +1,4 @@
+#include "base64.h"
 #include "filesystem.h"
 #include "plistgenerator.h"
 #include "stringbuilder.h"
@@ -1264,7 +1265,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 				}
 				else if (eat_word(linePtr, "resource_path"))
 				{
-					if (s_currentLibrary == nullptr || s_currentLibrary->isExecutable == false)
+					if (s_currentLibrary == nullptr)
 					{
 						report_error(line, "resource_path without a target");
 						return false;
@@ -2302,6 +2303,9 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
+				sb.Append("project(Project)\n");
+				sb.Append("\n");
+
 				sb.Append("set(CMAKE_CXX_STANDARD 11)\n");
 				sb.Append("\n");
 				
@@ -2657,6 +2661,35 @@ struct CMakeWriter
 						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
 							app->name.c_str(),
 							app->resource_path.c_str());
+						sb.Append("\n");
+
+						// write a formatted list of all resource paths to CHIBI_RESOURCE_PATHS
+						
+						StringBuilder resource_paths;
+						
+						resource_paths.Append("name,path\n");
+						resource_paths.AppendFormat("%s,%s\n",
+							app->name.c_str(),
+							app->resource_path.c_str());
+
+						const std::string resource_paths_base64 = base64_encode(
+							resource_paths.text.c_str(),
+							resource_paths.text.size());
+						
+					#if 0
+						for (auto & library_dependency : app->library_dependencies)
+						{
+							auto * library = chibi_info.find_library(library_dependency.name.c_str());
+
+							resource_paths.AppendFormat("%s,%s;",
+								library->name.c_str(),
+								library->resource_path.c_str());
+						}
+					#endif
+
+						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATHS=\"%s\">)\n",
+							app->name.c_str(),
+							resource_paths_base64.c_str());
 						sb.Append("\n");
 					}
 					else if (s_platform == "iphoneos")
