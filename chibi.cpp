@@ -2102,6 +2102,7 @@ struct CMakeWriter
 
 		// copy resources
 
+	// todo : copy library resources
 		if (app.resource_path.empty() == false)
 		{
 			sb.AppendFormat(
@@ -2603,6 +2604,7 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 
+			// todo : copy library resources
 				if (!app->resource_path.empty())
 				{
 					if (s_platform == "macos")
@@ -2668,24 +2670,29 @@ struct CMakeWriter
 						StringBuilder resource_paths;
 						
 						resource_paths.Append("name,path\n");
-						resource_paths.AppendFormat("%s,%s\n",
-							app->name.c_str(),
-							app->resource_path.c_str());
+						
+						if (app->resource_path.empty() == false)
+						{
+							resource_paths.AppendFormat("%s,%s\n",
+								app->name.c_str(),
+								app->resource_path.c_str());
+						}
+						
+						for (auto & library_dependency : app->library_dependencies)
+						{
+							auto * library = chibi_info.find_library(library_dependency.name.c_str());
+							
+							if (library->resource_path.empty() == false)
+							{
+								resource_paths.AppendFormat("%s,%s\n",
+									library->name.c_str(),
+									library->resource_path.c_str());
+							}
+						}
 
 						const std::string resource_paths_base64 = base64_encode(
 							resource_paths.text.c_str(),
 							resource_paths.text.size());
-						
-					#if 0
-						for (auto & library_dependency : app->library_dependencies)
-						{
-							auto * library = chibi_info.find_library(library_dependency.name.c_str());
-
-							resource_paths.AppendFormat("%s,%s;",
-								library->name.c_str(),
-								library->resource_path.c_str());
-						}
-					#endif
 
 						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATHS=\"%s\">)\n",
 							app->name.c_str(),
