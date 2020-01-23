@@ -1628,6 +1628,62 @@ struct CMakeWriter
 	}
 	
 	template <typename S>
+	static bool write_copy_resources_for_distribution_using_rsync(S & sb, const ChibiLibrary & app, const ChibiLibrary & library, const char * destination_path)
+	{
+		// use rsync to copy resources
+
+		// but first make sure the target directory exists
+
+		// note : we use a conditional to check if we're building a deployment app bundle
+		//        ideally CMake would have build config dependent custom commands,
+		//        this is really just a workaround/hack for missing behavior
+
+		const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
+
+		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"%s\")\n",
+			destination_path);
+		sb.AppendFormat(
+			"add_custom_command(\n" \
+				"\tTARGET %s POST_BUILD\n" \
+				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND_EXPAND_LISTS\n" \
+				"\tDEPENDS \"%s\")\n",
+			app.name.c_str(),
+			conditional,
+			library.resource_path.c_str());
+
+		std::string exclude_args;
+
+		if (library.resource_excludes.empty() == false)
+		{
+			for (auto & exclude : library.resource_excludes)
+			{
+				exclude_args += "--exclude '";
+				exclude_args += exclude;
+				exclude_args += "' ";
+			}
+		}
+
+		// rsync
+		sb.AppendFormat("set(args rsync -r %s \"%s/\" \"%s\")\n",
+				exclude_args.c_str(),
+				library.resource_path.c_str(),
+				destination_path);
+		sb.AppendFormat(
+			"add_custom_command(\n" \
+				"\tTARGET %s POST_BUILD\n" \
+				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND_EXPAND_LISTS\n" \
+				"\tDEPENDS \"%s\")\n",
+			app.name.c_str(),
+			conditional,
+			library.resource_path.c_str());
+		sb.Append("\n");
+		
+		return true;
+	}
+
+	template <typename S>
 	static bool write_header_paths(S & sb, const ChibiLibrary & library)
 	{
 		if (!library.header_paths.empty())
@@ -2688,54 +2744,8 @@ struct CMakeWriter
 					{
 						write_set_osx_bundle_path(sb, app->name.c_str());
 
-						// use rsync to copy resources
-						
-						// but first make sure the target directory exists
-						
-						// note : we use a conditional to check if we're building a deployment app bundle
-						//        ideally CMake would have build config dependent custom commands,
-						//        this is really just a workaround/hack for missing behavior
-						
-						const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
-
-						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Resources\")\n");
-						sb.AppendFormat(
-							"add_custom_command(\n" \
-								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND %s \"$<1:${args}>\"\n" \
-								"\tCOMMAND_EXPAND_LISTS\n" \
-								"\tDEPENDS \"%s\")\n",
-							app->name.c_str(),
-							conditional,
-							app->resource_path.c_str());
-						
-						std::string exclude_args;
-
-						if (app->resource_excludes.empty() == false)
-						{
-							for (auto & exclude : app->resource_excludes)
-							{
-								exclude_args += "--exclude '";
-								exclude_args += exclude;
-								exclude_args += "' ";
-							}
-						}
-
-						// rsync
-						sb.AppendFormat("set(args rsync -r %s \"%s/\" \"${BUNDLE_PATH}/Contents/Resources\")\n",
-								exclude_args.c_str(),
-								app->resource_path.c_str());
-						sb.AppendFormat(
-							"add_custom_command(\n" \
-								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND %s \"$<1:${args}>\"\n" \
-								"\tCOMMAND_EXPAND_LISTS\n" \
-								"\tDEPENDS \"%s\")\n",
-							app->name.c_str(),
-							conditional,
-							app->resource_path.c_str());
-					
-						sb.Append("\n");
+						if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *app, "${BUNDLE_PATH}/Contents/Resources"))
+							return false;
 						
 						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
 							app->name.c_str(),
@@ -2805,6 +2815,24 @@ struct CMakeWriter
                             app->name.c_str(),
                             "data");
                         sb.Append("\n");
+					}
+				}
+				
+				for (auto & library_dependency : app->library_dependencies)
+				{
+					auto * library = chibi_info.find_library(library_dependency.name.c_str());
+					
+					if (library->resource_path.empty() == false)
+					{
+						if (s_platform == "macos")
+						{
+							write_set_osx_bundle_path(sb, app->name.c_str());
+
+							char destination_path[PATH_MAX];
+							concat(destination_path, sizeof(destination_path), "${BUNDLE_PATH}/Contents/Resources/libs/", library->name.c_str());
+							if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *library, destination_path))
+								return false;
+						}
 					}
 				}
 				
