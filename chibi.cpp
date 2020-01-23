@@ -1551,6 +1551,83 @@ struct CMakeWriter
 	};
 	
 	template <typename S>
+	static bool write_app_resource_paths(const ChibiInfo & chibi_info, S & sb, const ChibiLibrary & app)
+	{
+		// write a formatted list of all resource paths to CHIBI_RESOURCE_PATHS
+
+		{
+			// for debug/release builds : write the absolute paths to the app/library locations
+			// this will allow for real-time editing to work, directly from the original source
+			// locations
+			
+			StringBuilder resource_paths;
+
+			resource_paths.Append("name,path\n");
+
+			if (app.resource_path.empty() == false)
+			{
+				resource_paths.AppendFormat("%s,%s\n",
+					app.name.c_str(),
+					app.resource_path.c_str());
+			}
+
+			for (auto & library_dependency : app.library_dependencies)
+			{
+				auto * library = chibi_info.find_library(library_dependency.name.c_str());
+				
+				if (library->resource_path.empty() == false)
+				{
+					resource_paths.AppendFormat("%s,%s\n",
+						library->name.c_str(),
+						library->resource_path.c_str());
+				}
+			}
+
+			const std::string resource_paths_base64 = base64_encode(
+				resource_paths.text.c_str(),
+				resource_paths.text.size());
+
+			sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATHS=\"%s\">)\n",
+				app.name.c_str(),
+				resource_paths_base64.c_str());
+			sb.Append("\n");
+		}
+		
+		{
+			// for distribution builds : write the relative paths to the app/library locations
+			// inside the app bundle or package location. this will allow for distributing the
+			// app with all files located within the same directory structure
+			
+			StringBuilder resource_paths;
+
+			resource_paths.Append("name,path\n");
+
+			for (auto & library_dependency : app.library_dependencies)
+			{
+				auto * library = chibi_info.find_library(library_dependency.name.c_str());
+				
+				if (library->resource_path.empty() == false)
+				{
+					resource_paths.AppendFormat("%s,libs/%s\n",
+						library->name.c_str(),
+						library->name.c_str());
+				}
+			}
+
+			const std::string resource_paths_base64 = base64_encode(
+				resource_paths.text.c_str(),
+				resource_paths.text.size());
+
+			sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<CONFIG:Distribution>:CHIBI_RESOURCE_PATHS=\"%s\">)\n",
+				app.name.c_str(),
+				resource_paths_base64.c_str());
+			sb.Append("\n");
+		}
+		
+		return true;
+	}
+	
+	template <typename S>
 	static bool write_header_paths(S & sb, const ChibiLibrary & library)
 	{
 		if (!library.header_paths.empty())
@@ -2664,40 +2741,6 @@ struct CMakeWriter
 							app->name.c_str(),
 							app->resource_path.c_str());
 						sb.Append("\n");
-
-						// write a formatted list of all resource paths to CHIBI_RESOURCE_PATHS
-						
-						StringBuilder resource_paths;
-						
-						resource_paths.Append("name,path\n");
-						
-						if (app->resource_path.empty() == false)
-						{
-							resource_paths.AppendFormat("%s,%s\n",
-								app->name.c_str(),
-								app->resource_path.c_str());
-						}
-						
-						for (auto & library_dependency : app->library_dependencies)
-						{
-							auto * library = chibi_info.find_library(library_dependency.name.c_str());
-							
-							if (library->resource_path.empty() == false)
-							{
-								resource_paths.AppendFormat("%s,%s\n",
-									library->name.c_str(),
-									library->resource_path.c_str());
-							}
-						}
-
-						const std::string resource_paths_base64 = base64_encode(
-							resource_paths.text.c_str(),
-							resource_paths.text.size());
-
-						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATHS=\"%s\">)\n",
-							app->name.c_str(),
-							resource_paths_base64.c_str());
-						sb.Append("\n");
 					}
 					else if (s_platform == "iphoneos")
 					{
@@ -2764,6 +2807,9 @@ struct CMakeWriter
                         sb.Append("\n");
 					}
 				}
+				
+				if (!write_app_resource_paths(chibi_info, sb, *app))
+					return false;
 				
 				if (!write_header_paths(sb, *app))
 					return false;
