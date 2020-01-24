@@ -21,7 +21,8 @@ namespace chibi
 		const uint8_t* bytes = (const uint8_t*)in_bytes;
 		const int byteCount = numBytes;
 		
-		const int expectedResultSize = (byteCount * 8 + 5) / 6;
+		const int expectedCharacterCount = (byteCount * 8 + 5) / 6;
+		const int expectedResultSize = (expectedCharacterCount + 3) / 4 * 4;
 		result.reserve(expectedResultSize);
 		
 		int baseIndex = 0;
