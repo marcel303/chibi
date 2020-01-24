@@ -1551,7 +1551,11 @@ struct CMakeWriter
 	};
 	
 	template <typename S>
-	static bool write_app_resource_paths(const ChibiInfo & chibi_info, S & sb, const ChibiLibrary & app)
+	static bool write_app_resource_paths(
+		const ChibiInfo & chibi_info,
+		S & sb,
+		const ChibiLibrary & app,
+		const std::vector<ChibiLibraryDependency> & library_dependencies)
 	{
 		// write a formatted list of all resource paths to CHIBI_RESOURCE_PATHS
 
@@ -1571,15 +1575,18 @@ struct CMakeWriter
 					app.resource_path.c_str());
 			}
 
-			for (auto & library_dependency : app.library_dependencies)
+			for (auto & library_dependency : library_dependencies)
 			{
-				auto * library = chibi_info.find_library(library_dependency.name.c_str());
-				
-				if (library->resource_path.empty() == false)
+				if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 				{
-					resource_paths.AppendFormat("%s,%s\n",
-						library->name.c_str(),
-						library->resource_path.c_str());
+					auto * library = chibi_info.find_library(library_dependency.name.c_str());
+					
+					if (library->resource_path.empty() == false)
+					{
+						resource_paths.AppendFormat("%s,%s\n",
+							library->name.c_str(),
+							library->resource_path.c_str());
+					}
 				}
 			}
 
@@ -1602,15 +1609,18 @@ struct CMakeWriter
 
 			resource_paths.Append("name,path\n");
 
-			for (auto & library_dependency : app.library_dependencies)
+			for (auto & library_dependency : library_dependencies)
 			{
-				auto * library = chibi_info.find_library(library_dependency.name.c_str());
-				
-				if (library->resource_path.empty() == false)
+				if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 				{
-					resource_paths.AppendFormat("%s,libs/%s\n",
-						library->name.c_str(),
-						library->name.c_str());
+					auto * library = chibi_info.find_library(library_dependency.name.c_str());
+					
+					if (library->resource_path.empty() == false)
+					{
+						resource_paths.AppendFormat("%s,libs/%s\n",
+							library->name.c_str(),
+							library->name.c_str());
+					}
 				}
 			}
 
@@ -1679,6 +1689,60 @@ struct CMakeWriter
 			conditional,
 			library.resource_path.c_str());
 		sb.Append("\n");
+		
+		return true;
+	}
+	
+	template <typename S>
+	static bool write_copy_license_files_for_distribution_using_rsync(S & sb, const ChibiLibrary & app, const ChibiLibrary & library, const char * destination_path)
+	{
+		// use rsync to copy license file
+
+		// but first make sure the target directory exists
+
+		// note : we use a conditional to check if we're building a deployment app bundle
+		//        ideally CMake would have build config dependent custom commands,
+		//        this is really just a workaround/hack for missing behavior
+
+		const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
+
+		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"%s\")\n",
+			destination_path);
+		sb.AppendFormat(
+			"add_custom_command(\n" \
+				"\tTARGET %s POST_BUILD\n" \
+				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND_EXPAND_LISTS\n" \
+				"\tDEPENDS \"%s\")\n",
+			app.name.c_str(),
+			conditional,
+			destination_path);
+
+		// rsync
+		
+		for (auto & license_file : library.license_files)
+		{
+			char full_path[PATH_MAX];
+			if (!concat(full_path, sizeof(full_path), library.path.c_str(), "/", license_file.c_str()))
+			{
+				report_error(nullptr, "failed to create absolute path");
+				return false;
+			}
+			
+			sb.AppendFormat("set(args rsync \"%s\" \"%s\")\n",
+					full_path,
+					destination_path);
+			sb.AppendFormat(
+				"add_custom_command(\n" \
+					"\tTARGET %s POST_BUILD\n" \
+					"\tCOMMAND %s \"$<1:${args}>\"\n" \
+					"\tCOMMAND_EXPAND_LISTS\n" \
+					"\tDEPENDS \"%s\")\n",
+				app.name.c_str(),
+				conditional,
+				full_path);
+			sb.Append("\n");
+		}
 		
 		return true;
 	}
@@ -1982,13 +2046,12 @@ struct CMakeWriter
 		return true;
 	}
 	
-	static bool write_embedded_app_files(const ChibiInfo & chibi_info, StringBuilder & sb, const ChibiLibrary & app)
+	static bool write_embedded_app_files(
+		const ChibiInfo & chibi_info,
+		StringBuilder & sb,
+		const ChibiLibrary & app,
+		const std::vector<ChibiLibraryDependency> & library_dependencies)
 	{
-		std::vector<ChibiLibraryDependency> library_dependencies;
-		
-		if (!gather_all_library_dependencies(chibi_info, app, library_dependencies))
-			return false;
-		
 		bool has_embed_dependency = false;
 		
 		for (auto & library_dependency : library_dependencies)
@@ -2160,13 +2223,8 @@ struct CMakeWriter
 		return true;
 	}
 
-	static bool write_create_windows_app_archive(const ChibiInfo & chibi_info, StringBuilder & sb, const ChibiLibrary & app)
+	static bool write_create_windows_app_archive(const ChibiInfo & chibi_info, StringBuilder & sb, const ChibiLibrary & app, const std::vector<ChibiLibraryDependency> & library_dependencies)
 	{
-		std::vector<ChibiLibraryDependency> library_dependencies;
-		
-		if (!gather_all_library_dependencies(chibi_info, app, library_dependencies))
-			return false;
-
 		// create a directory where to copy the executable, distribution and data files
 
 		sb.AppendFormat(
@@ -2737,7 +2795,8 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 
-			// todo : copy library resources
+				// copy app resources
+				
 				if (!app->resource_path.empty())
 				{
 					if (s_platform == "macos")
@@ -2818,25 +2877,58 @@ struct CMakeWriter
 					}
 				}
 				
-				for (auto & library_dependency : app->library_dependencies)
+				// copy library resources
+				
+				std::vector<ChibiLibraryDependency> all_library_dependencies;
+				if (!gather_all_library_dependencies(chibi_info, *app, all_library_dependencies))
+					return false;
+				
+				for (auto & library_dependency : all_library_dependencies)
 				{
-					auto * library = chibi_info.find_library(library_dependency.name.c_str());
-					
-					if (library->resource_path.empty() == false)
+					if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 					{
-						if (s_platform == "macos")
+						auto * library = chibi_info.find_library(library_dependency.name.c_str());
+					
+						if (library->resource_path.empty() == false)
 						{
-							write_set_osx_bundle_path(sb, app->name.c_str());
+							if (s_platform == "macos")
+							{
+								write_set_osx_bundle_path(sb, app->name.c_str());
 
-							char destination_path[PATH_MAX];
-							concat(destination_path, sizeof(destination_path), "${BUNDLE_PATH}/Contents/Resources/libs/", library->name.c_str());
-							if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *library, destination_path))
-								return false;
+								char destination_path[PATH_MAX];
+								concat(destination_path, sizeof(destination_path), "${BUNDLE_PATH}/Contents/Resources/libs/", library->name.c_str());
+								if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *library, destination_path))
+									return false;
+							}
 						}
 					}
 				}
 				
-				if (!write_app_resource_paths(chibi_info, sb, *app))
+				// copy library license files
+				
+				for (auto & library_dependency : all_library_dependencies)
+				{
+					if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+					{
+						auto * library = chibi_info.find_library(library_dependency.name.c_str());
+					
+						if (library->license_files.empty() == false)
+						{
+							if (s_platform == "macos")
+							{
+								write_set_osx_bundle_path(sb, app->name.c_str());
+								
+								char destination_path[PATH_MAX];
+								concat(destination_path, sizeof(destination_path), "${BUNDLE_PATH}/Contents/License/", library->name.c_str());
+								
+								if (!write_copy_license_files_for_distribution_using_rsync(sb, *app, *library, destination_path))
+									return false;
+							}
+						}
+					}
+				}
+				
+				if (!write_app_resource_paths(chibi_info, sb, *app, all_library_dependencies))
 					return false;
 				
 				if (!write_header_paths(sb, *app))
@@ -2851,7 +2943,7 @@ struct CMakeWriter
 				if (!write_package_dependencies(sb, *app))
 					return false;
 				
-				if (!write_embedded_app_files(chibi_info, sb, *app))
+				if (!write_embedded_app_files(chibi_info, sb, *app, all_library_dependencies))
 					return false;
 				
 			// todo : let libraries and apps add target properties
@@ -2955,7 +3047,7 @@ struct CMakeWriter
 			#if 0
 				if (s_platform == "windows")
 				{
-					write_create_windows_app_archive(chibi_info, sb, *app);
+					write_create_windows_app_archive(chibi_info, sb, *app, all_library_dependencies);
 				}
 			#endif
 
