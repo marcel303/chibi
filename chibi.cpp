@@ -1694,16 +1694,22 @@ struct CMakeWriter
 	}
 	
 	template <typename S>
-	static bool write_copy_license_files_for_distribution_using_rsync(S & sb, const ChibiLibrary & app, const ChibiLibrary & library, const char * destination_path)
+	static bool write_copy_license_files_for_distribution_using_rsync(
+		S & sb,
+		const ChibiLibrary & app,
+		const ChibiLibrary & library,
+		const char * destination_path)
 	{
-		// use rsync to copy license file
+		assert(!library.license_files.empty());
+		
+		// use rsync to copy the license file(s)
 
 		// but first make sure the target directory exists
 
 		// note : we use a conditional to check if we're building a deployment app bundle
 		//        ideally CMake would have build config dependent custom commands,
 		//        this is really just a workaround/hack for missing behavior
-
+		
 		const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
 
 		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"%s\")\n",
@@ -1712,14 +1718,11 @@ struct CMakeWriter
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
 				"\tCOMMAND %s \"$<1:${args}>\"\n" \
-				"\tCOMMAND_EXPAND_LISTS\n" \
-				"\tDEPENDS \"%s\")\n",
+				"\tCOMMAND_EXPAND_LISTS)\n",
 			app.name.c_str(),
-			conditional,
-			destination_path);
-
-		// rsync
+			conditional);
 		
+		StringBuilder sources;
 		for (auto & license_file : library.license_files)
 		{
 			char full_path[PATH_MAX];
@@ -1729,21 +1732,24 @@ struct CMakeWriter
 				return false;
 			}
 			
-			sb.AppendFormat("set(args rsync \"%s\" \"%s\")\n",
-					full_path,
-					destination_path);
-			sb.AppendFormat(
-				"add_custom_command(\n" \
-					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND %s \"$<1:${args}>\"\n" \
-					"\tCOMMAND_EXPAND_LISTS\n" \
-					"\tDEPENDS \"%s\")\n",
-				app.name.c_str(),
-				conditional,
-				full_path);
-			sb.Append("\n");
+			sources.AppendFormat("\t\"%s\"\n", full_path);
 		}
 		
+		sb.AppendFormat(
+			"set(args rsync\n" \
+				"%s" \
+				"\t\"%s\")\n",
+			sources.text.c_str(),
+			destination_path);
+		sb.AppendFormat(
+			"add_custom_command(\n" \
+				"\tTARGET %s POST_BUILD\n" \
+				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND_EXPAND_LISTS)\n",
+			app.name.c_str(),
+			conditional);
+		sb.Append("\n");
+	
 		return true;
 	}
 
@@ -2073,8 +2079,6 @@ struct CMakeWriter
 				
 				if (s_platform == "macos")
 				{
-					write_set_osx_bundle_path(sb, app.name.c_str());
-					
 					if (string_ends_with(filename, ".framework"))
 					{
 						// use rsync to recursively copy files if this is a framework
@@ -2153,8 +2157,6 @@ struct CMakeWriter
 					
 					if (s_platform == "macos")
 					{
-						write_set_osx_bundle_path(sb, app.name.c_str());
-
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
@@ -2188,8 +2190,6 @@ struct CMakeWriter
 					
 					if (s_platform == "macos")
 					{
-						write_set_osx_bundle_path(sb, app.name.c_str());
-						
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
@@ -2225,13 +2225,19 @@ struct CMakeWriter
 
 	static bool write_create_windows_app_archive(const ChibiInfo & chibi_info, StringBuilder & sb, const ChibiLibrary & app, const std::vector<ChibiLibraryDependency> & library_dependencies)
 	{
+		const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
+		
 		// create a directory where to copy the executable, distribution and data files
-
+		
+		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+			app.name.c_str());
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+				"\tCOMMAND $<$<CONFIG:Distribution>:\"$<1:${args}>\">\n" \
+				"\tCOMMAND_EXPAND_LISTS)",
 				app.name.c_str(),
+				conditional,
 				app.name.c_str());
 
 		// copy the generated executable
@@ -2239,8 +2245,9 @@ struct CMakeWriter
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:%s> \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+				"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:%s> \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
 			app.name.c_str(),
+			conditional,
 			app.name.c_str(),
 			app.name.c_str());
 
@@ -2257,9 +2264,10 @@ struct CMakeWriter
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
+							"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
 							"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
 						app.name.c_str(),
+						conditional,
 						library_dependency.name.c_str(),
 						app.name.c_str(),
 						library_dependency.name.c_str());
@@ -2283,8 +2291,9 @@ struct CMakeWriter
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+							"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
 						app.name.c_str(),
+						conditional,
 						dist_file.c_str(),
 						app.name.c_str());
 				}
@@ -2299,15 +2308,17 @@ struct CMakeWriter
 			sb.AppendFormat(
 				"add_custom_command(\n" \
 					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
+					"\tCOMMAND %s ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
 					app.name.c_str(),
+					conditional,
 					app.name.c_str());
 
 			sb.AppendFormat(
 				"add_custom_command(\n" \
 					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
+					"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
 				app.name.c_str(),
+				conditional,
 				app.resource_path.c_str(),
 				app.name.c_str());
 		}
@@ -2797,13 +2808,19 @@ struct CMakeWriter
 
 				// copy app resources
 				
+				if (s_platform == "macos" || s_platform == "iphoneos")
+				{
+				// todo : unset bundle path when we're done processing this app
+					write_set_osx_bundle_path(sb, app->name.c_str());
+				}
+				
 				if (!app->resource_path.empty())
 				{
 					if (s_platform == "macos")
 					{
-						write_set_osx_bundle_path(sb, app->name.c_str());
-
-						if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *app, "${BUNDLE_PATH}/Contents/Resources"))
+						const char * resource_path = "${BUNDLE_PATH}/Contents/Resources";
+						
+						if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *app, resource_path))
 							return false;
 						
 						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
@@ -2815,49 +2832,10 @@ struct CMakeWriter
 					{
 						write_set_ios_bundle_path(sb, app->name.c_str());
 
-						// use rsync to copy resources
-						
-						// but first make sure the target directory exists
-						
 						const char * resource_path = "${BUNDLE_PATH}";
 						
-						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"%s\")\n", resource_path);
-						sb.AppendFormat(
-							"add_custom_command(\n" \
-								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND \"$<1:${args}>\"\n" \
-								"\tCOMMAND_EXPAND_LISTS\n" \
-								"\tDEPENDS \"%s\")\n",
-							app->name.c_str(),
-							app->resource_path.c_str());
-						
-						std::string exclude_args;
-
-						if (app->resource_excludes.empty() == false)
-						{
-							for (auto & exclude : app->resource_excludes)
-							{
-								exclude_args += "--exclude '";
-								exclude_args += exclude;
-								exclude_args += "' ";
-							}
-						}
-
-						// rsync
-						sb.AppendFormat("set(args rsync -r %s \"%s/\" \"%s\")\n",
-								exclude_args.c_str(),
-								app->resource_path.c_str(),
-								resource_path);
-						sb.AppendFormat(
-							"add_custom_command(\n" \
-								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND \"$<1:${args}>\"\n" \
-								"\tCOMMAND_EXPAND_LISTS\n" \
-								"\tDEPENDS \"%s\")\n",
-							app->name.c_str(),
-							app->resource_path.c_str());
-					
-						sb.Append("\n");
+						if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *app, resource_path))
+							return false;
 						
 						sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\".\")\n",
 							app->name.c_str());
@@ -2888,15 +2866,24 @@ struct CMakeWriter
 					if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 					{
 						auto * library = chibi_info.find_library(library_dependency.name.c_str());
-					
+						
 						if (library->resource_path.empty() == false)
 						{
+							const char * resource_path = nullptr;
+							
 							if (s_platform == "macos")
+								resource_path = "${BUNDLE_PATH}/Contents/Resources/libs";
+							else if (s_platform == "iphoneos")
+								resource_path = "${BUNDLE_PATH}";
+							else
+							// todo : add windows and linux here
+								assert(false);
+							
+							assert(resource_path != nullptr);
+							if (resource_path != nullptr)
 							{
-								write_set_osx_bundle_path(sb, app->name.c_str());
-
 								char destination_path[PATH_MAX];
-								concat(destination_path, sizeof(destination_path), "${BUNDLE_PATH}/Contents/Resources/libs/", library->name.c_str());
+								concat(destination_path, sizeof(destination_path), resource_path, library->name.c_str());
 								if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *library, destination_path))
 									return false;
 							}
@@ -2914,12 +2901,21 @@ struct CMakeWriter
 					
 						if (library->license_files.empty() == false)
 						{
+							const char * license_path = nullptr;
+							
 							if (s_platform == "macos")
+								license_path = "${BUNDLE_PATH}/Contents/License";
+							else if (s_platform == "iphoneos")
+								license_path = "${BUNDLE_PATH}";
+							else
+							// todo : add windows and linux here
+								assert(false);
+							
+							assert(license_path != nullptr);
+							if (license_path != nullptr)
 							{
-								write_set_osx_bundle_path(sb, app->name.c_str());
-								
 								char destination_path[PATH_MAX];
-								concat(destination_path, sizeof(destination_path), "${BUNDLE_PATH}/Contents/License/", library->name.c_str());
+								concat(destination_path, sizeof(destination_path), license_path, "/", library->name.c_str());
 								
 								if (!write_copy_license_files_for_distribution_using_rsync(sb, *app, *library, destination_path))
 									return false;
@@ -3018,8 +3014,6 @@ struct CMakeWriter
 				if (s_platform == "macos")
 				{
 					// add rpath to the generated executable so that it can find dylibs inside the location of the executable itself. this is needed when copying generated shared libraries into the app bundle
-
-					write_set_osx_bundle_path(sb, app->name.c_str());
 					
 					// note : we use a conditional to check if we're building a deployment app bundle
 					//        ideally CMake would have build config dependent custom commands,
