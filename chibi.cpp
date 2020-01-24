@@ -2883,7 +2883,7 @@ struct CMakeWriter
 							if (resource_path != nullptr)
 							{
 								char destination_path[PATH_MAX];
-								concat(destination_path, sizeof(destination_path), resource_path, library->name.c_str());
+								concat(destination_path, sizeof(destination_path), resource_path, "/", library->name.c_str());
 								if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *library, destination_path))
 									return false;
 							}
