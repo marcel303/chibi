@@ -1,15 +1,16 @@
 #include "base64.h"
-
-static const char encodingTable[64] =
-{
-	'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
-	'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
-	'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
-	'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/' 
-};
+#include <assert.h>
 
 namespace chibi
 {
+	static const char encodingTable[64] =
+	{
+		'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+		'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
+		'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
+		'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/'
+	};
+
 	std::string base64_encode(const void * in_bytes, const int numBytes)
 	{
 		std::string result;
@@ -19,6 +20,9 @@ namespace chibi
 
 		const uint8_t* bytes = (const uint8_t*)in_bytes;
 		const int byteCount = numBytes;
+		
+		const int expectedResultSize = (byteCount * 8 + 5) / 6;
+		result.reserve(expectedResultSize);
 		
 		int baseIndex = 0;
 		
@@ -67,6 +71,8 @@ namespace chibi
 			
 			baseIndex += 3;
 		}
+		
+		assert(result.size() == expectedResultSize); // if unequal, we either reserved too much memory, or had to grow/realloc the resulting array
 		
 		return result;
 	}
