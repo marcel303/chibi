@@ -1566,11 +1566,12 @@ struct CMakeWriter
 			
 			StringBuilder resource_paths;
 
-			resource_paths.Append("name,path\n");
+			resource_paths.Append("type,name,path\n");
 
 			if (app.resource_path.empty() == false)
 			{
-				resource_paths.AppendFormat("%s,%s\n",
+				resource_paths.AppendFormat("%s,%s,%s\n",
+					"app",
 					app.name.c_str(),
 					app.resource_path.c_str());
 			}
@@ -1583,7 +1584,8 @@ struct CMakeWriter
 					
 					if (library->resource_path.empty() == false)
 					{
-						resource_paths.AppendFormat("%s,%s\n",
+						resource_paths.AppendFormat("%s,%s,%s\n",
+							"library",
 							library->name.c_str(),
 							library->resource_path.c_str());
 					}
@@ -1607,7 +1609,7 @@ struct CMakeWriter
 			
 			StringBuilder resource_paths;
 
-			resource_paths.Append("name,path\n");
+			resource_paths.Append("type,name,path\n");
 
 			for (auto & library_dependency : library_dependencies)
 			{
@@ -1617,7 +1619,8 @@ struct CMakeWriter
 					
 					if (library->resource_path.empty() == false)
 					{
-						resource_paths.AppendFormat("%s,libs/%s\n",
+						resource_paths.AppendFormat("%s,%s,libs/%s\n",
+							"library",
 							library->name.c_str(),
 							library->name.c_str());
 					}
