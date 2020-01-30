@@ -266,6 +266,8 @@ struct ChibiLibrary
 	std::vector<std::string> dist_files;
 
 	std::vector<std::string> license_files;
+
+	std::vector<std::string> link_translation_unit_using_function_calls;
 	
 	void dump_info() const
 	{
@@ -392,6 +394,7 @@ void show_chibi_syntax()
 	show_syntax_elem("license_file <path>", "specify license file(s) for a library");
 	show_syntax_elem("scan_files <extension_or_wildcard> [path <path>].. [traverse] [group <group_name>] [conglomerate <conglomerate_file>]", "adds files by scanning the given path or the path of the current chibi file. files will be filtered using the extension or wildcard pattern provided. [path] can be used to specify a specific folder to look inside. [traverse] may be set to recursively look for files down the directory hierarchy. when [group] is specified, files found through the scan operation will be grouped by this name in generated ide project files. when [conglomerate] is set, the files will be concatenated into this files, and the generated file will be added instead. [conglomerate] may be used to speed up compile times by compiling a set of files in one go");
 	show_syntax_elem("push_conglomerate <name>", "pushes a conglomerate file. files will automatically be added to the given conglomerate file. push_conglomerate must be followed by a matching pop_conglomerate");
+	show_syntax_elem("link_translation_unit_using_function_call <function_name>", "adds a function to be called at the app level to ensure the translation unit in a dependent (static) library doesn't get stripped away by the linker");
 }
 
 static bool process_chibi_root_file(ChibiInfo & chibi_info, const char * filename, const std::string & current_group, const bool skip_file_scan);
@@ -1449,6 +1452,26 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 
 					conglomerate_stack.pop_back();
 				}
+				else if (eat_word(linePtr, "link_translation_unit_using_function_call"))
+				{
+					if (s_currentLibrary == nullptr)
+					{
+						report_error(line, "link_translation_unit_using_function_call without a target");
+						return false;
+					}
+					else
+					{
+						const char * function_name;
+							
+						if (!eat_word_v2(linePtr, function_name))
+						{
+							report_error(line, "missing function name");
+							return false;
+						}
+
+						s_currentLibrary->link_translation_unit_using_function_calls.push_back(function_name);
+					}
+				}
 				else
 				{
 					report_error(line, "syntax error");
@@ -2365,6 +2388,104 @@ struct CMakeWriter
 	{
 		sb.AppendFormat("\tset(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>\")\n", app_name);
 	}
+
+	static bool generate_translation_unit_linkage_files(const ChibiInfo & chibi_info, StringBuilder & sb, const char * generated_path)
+	{
+		// generate translation unit linkage files
+
+		for (auto * app : chibi_info.libraries)
+		{
+			if (app->isExecutable == false)
+				continue;
+
+			std::vector<ChibiLibraryDependency> all_library_dependencies;
+			if (!gather_all_library_dependencies(chibi_info, *app, all_library_dependencies))
+				return false;
+
+			std::vector<std::string> link_translation_unit_using_function_calls;
+			
+			for (auto & library_dependency : all_library_dependencies)
+			{
+				if (library_dependency.type != ChibiLibraryDependency::kType_Generated)
+					continue;
+
+				auto * library = chibi_info.find_library(library_dependency.name.c_str());
+
+				link_translation_unit_using_function_calls.insert(
+					link_translation_unit_using_function_calls.end(),
+					library->link_translation_unit_using_function_calls.begin(),
+					library->link_translation_unit_using_function_calls.end());
+			}
+
+			if (link_translation_unit_using_function_calls.empty() == false)
+			{
+				// generate translation unit linkage file
+				
+				StringBuilder text_sb;
+			
+				text_sb.Append("// auto-generated. do not hand-edit\n\n");
+
+				for (auto & function_name : link_translation_unit_using_function_calls)
+					text_sb.AppendFormat("extern void %s();\n", function_name.c_str());
+				text_sb.Append("\n");
+
+				text_sb.Append("void linkTranslationUnits()\n");
+				text_sb.Append("{\n");
+				{
+					for (auto & function_name : link_translation_unit_using_function_calls)
+						text_sb.AppendFormat("\t%s();\n", function_name.c_str());
+				}
+				text_sb.Append("}\n");
+
+				char full_path[PATH_MAX];
+				if (!concat(full_path, sizeof(full_path), generated_path, "/translation_unit_linkage-", app->name.c_str(), ".cpp"))
+				{
+					report_error(nullptr, "failed to create absolute path");
+					return false;
+				}
+
+				if (!write_text_to_file_if_contents_changed(sb, text_sb.text.c_str(), full_path))
+				{
+					report_error(nullptr, "failed to write conglomerate file. path: %s", full_path);
+					return false;
+				}
+				
+				// add the translation unit linkage file to the list of app files
+				
+				ChibiLibraryFile file;
+				file.filename = full_path;
+
+				app->files.push_back(file);
+			}
+		}
+
+		return true;
+	}
+
+	static bool write_text_to_file_if_contents_changed(StringBuilder & sb, const char * text, const char * filename)
+	{
+		// escape the text so we can use 'file(WRITE ..)' from cmake to create the actual file inside the right directory
+		
+		std::string escaped_text;
+		
+		for (int i = 0; text[i] != 0; ++i)
+		{
+			const char c = text[i];
+
+			if (c == '"')
+			{
+				escaped_text.push_back('\\');
+				escaped_text.push_back('"');
+			}
+			else
+				escaped_text.push_back(c);
+		}
+
+		sb.AppendFormat("file(WRITE \"%s.txt\" \"%s\")\n", filename, escaped_text.c_str());
+		sb.AppendFormat("file(GENERATE OUTPUT \"%s\" INPUT \"%s.txt\")\n", filename, filename);
+
+		return true;
+	}
 	
 	bool write(const ChibiInfo & chibi_info, const char * output_filename)
 	{
@@ -2679,6 +2800,19 @@ struct CMakeWriter
 				if (!output(f, sb))
 					return false;
 			}
+
+			{
+				StringBuilder sb;
+				
+				sb.AppendFormat("# --- translation unit linkage files ---\n");
+				sb.Append("\n");
+
+				if (generate_translation_unit_linkage_files(chibi_info, sb, generated_path) == false)
+					return false;
+
+				if (!output(f, sb))
+					return false;
+			}
 			
 			for (auto & library : libraries)
 			{
@@ -2974,28 +3108,12 @@ struct CMakeWriter
 						return false;
 					}
 					
-					// escape the text so we can use 'file(WRITE ..)' from cmake to create the actual file inside the right directory
-					
-					std::string escaped_text;
-					
-					for (auto & c : text)
-					{
-						if (c == '"')
-						{
-							escaped_text.push_back('\\');
-							escaped_text.push_back('"');
-						}
-						else
-							escaped_text.push_back(c);
-					}
-					
 					char plist_path[PATH_MAX];
 					if (!concat(plist_path, sizeof(plist_path), generated_path, "/", app->name.c_str(), ".plist"))
 					{
 						report_error(nullptr, "failed to create plist path");
 						return false;
 					}
-					
 					
 					if (s_platform == "iphoneos")
 					{
@@ -3004,8 +3122,8 @@ struct CMakeWriter
 							app->name.c_str());
 					}
 
-				// todo : use file copy/append ? write evals the subst variables early..
-					sb.AppendFormat("file(WRITE \"%s\" \"%s\")\n", plist_path, escaped_text.c_str());
+					if (!write_text_to_file_if_contents_changed(sb, text.c_str(), plist_path))
+						return false;
 
 					sb.AppendFormat("set_target_properties(%s PROPERTIES MACOSX_BUNDLE_INFO_PLIST \"%s\")\n",
 						app->name.c_str(),
