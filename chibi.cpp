@@ -3464,6 +3464,8 @@ bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst
 	if (chibi_process(chibi_info, build_root, false, platform) == false)
 		return false;
 	
+	printf("found %d libraries and apps in total\n", (int)chibi_info.libraries.size());
+
 	//
 	
 	char output_filename[PATH_MAX];
