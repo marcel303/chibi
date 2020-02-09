@@ -2998,7 +2998,6 @@ struct CMakeWriter
 				
 				if (s_platform == "macos")
 				{
-				// todo : unset bundle path when we're done processing this app
 					write_set_osx_bundle_path(sb, app->name.c_str());
 				}
 				else if (s_platform == "iphoneos")
@@ -3214,6 +3213,8 @@ struct CMakeWriter
 				{
 					write_create_windows_app_archive(chibi_info, sb, *app, all_library_dependencies);
 				}
+
+				sb.Append("unset(BUNDLE_PATH)\n");
 
 				if (!output(f, sb))
 					return false;
