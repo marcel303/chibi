@@ -1495,7 +1495,11 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 		
 		if (group_stack.size() > 1)
 		{
-			report_error(nullptr, "missing one or more 'pop_group'");
+			char temp[512];
+			temp[0] = 0;
+			for (size_t i = 1; i < group_stack.size(); ++i)
+				concat(temp, sizeof(temp), group_stack[i].c_str(), " ");
+			report_error(nullptr, "missing one or more 'pop_group'. groups still active: %s", temp);
 			return false;
 		}
 		
