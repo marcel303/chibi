@@ -25,7 +25,6 @@ brew install ccache
 #define ENABLE_PKGCONFIG 0 // todo : pkgconfig shouldn't be used in chibi.txt files. but it would be nice to define libraries using pkgconfig externally, as a sort of aliases, which can be used in a normalized fashion as a regular library
 
 // todo : add basic wildcard support ("include/*.cpp")
-// todo : copy generated dylibs into app bundle rpath on macos
 // todo : create library targets which are an alias for an existing system library, such as libusb, libsdl2, etc -> will allow to normalize library names, and to use either the system version or compile from source version interchangable
 
 #ifdef _MSC_VER
@@ -83,8 +82,6 @@ brew install ccache
 	#define strcpy_s(d, ds, s) strcpy(d, s)
 	#define sscanf_s sscanf
 #endif
-
-// todo : redesign the embed_framework option
 
 static ssize_t s_current_line_length = 0; // fixme : make safe for concurrent use of library version of chibi
 
@@ -3079,7 +3076,6 @@ struct CMakeWriter
 				if (!write_embedded_app_files(chibi_info, sb, *app, all_library_dependencies))
 					return false;
 				
-			// todo : let libraries and apps add target properties
 				if (s_platform == "windows")
 				{
 					sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY LINK_FLAGS \" /SAFESEH:NO\")\n", app->name.c_str());
@@ -3165,6 +3161,12 @@ struct CMakeWriter
 					write_create_windows_app_archive(chibi_info, sb, *app, all_library_dependencies);
 				}
 			#endif
+			
+				if (s_platform == "macos" || s_platform == "iphoneos")
+				{
+					// unset bundle path when we're done processing this app
+					sb.AppendFormat("unset(BUNDLE_PATH)");
+				}
 
 				if (!output(f, sb))
 					return false;
