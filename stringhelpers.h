@@ -65,7 +65,7 @@ namespace chibi
 
 			// make sure to increment the line pointer until we reach non-whitespace territory again
 
-			while (is_whitespace(*line))
+			while (*line != 0 && is_whitespace(*line))
 				line++;
 			
 			return true;
@@ -95,7 +95,7 @@ namespace chibi
 		if (line[index] != 0 && is_whitespace(line[index]) == false)
 			return false;
 
-		while (is_whitespace(line[index]))
+		while (line[index] != 0 && is_whitespace(line[index]))
 			index++;
 
 		line += index;
