@@ -92,11 +92,11 @@ namespace chibi
 			index++;
 		}
 
-		if (is_whitespace(line[index]) == false && line[index] != 0)
+		if (line[index] != 0 && is_whitespace(line[index]) == false)
 			return false;
 
 		while (is_whitespace(line[index]))
-				index++;
+			index++;
 
 		line += index;
 		return true;

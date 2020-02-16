@@ -445,7 +445,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 				break;
 			else
 			{
-				//printf("%s\n", line);
+				printf("%s\n", line);
 				
 				s_current_line_length = r;
 				
@@ -484,12 +484,18 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						char chibi_file[PATH_MAX];
 						
 						if (!concat(chibi_file, sizeof(chibi_file), chibi_path, "/", location, "/chibi.txt"))
+						{
+							report_error(line, "failed to create absolute path");
 							return false;
+						}
 						
 						const int length = s_current_line_length;
 						
 						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan))
+						{
+							report_error(line, "failed to create absolute path");
 							return false;
+						}
 						
 						s_currentLibrary = nullptr;
 						
@@ -540,7 +546,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						char chibi_file[PATH_MAX];
 						
 						if (!concat(chibi_file, sizeof(chibi_file), chibi_path, "/", location, "/chibi-root.txt"))
+						{
+							report_error(line, "failed to create absolute path");
 							return false;
+						}
 						
 						const int length = s_current_line_length;
 						
