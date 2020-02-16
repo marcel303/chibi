@@ -1647,6 +1647,14 @@ struct CMakeWriter
 				}
 			}
 
+			if (s_platform == "windows")
+			{
+				resource_paths.AppendFormat("%s,%s,%s\n",
+					"app",
+					app.name.c_str(),
+					"data");
+			}
+
 			const std::string resource_paths_base64 = base64_encode(
 				resource_paths.text.c_str(),
 				resource_paths.text.size());
@@ -2225,8 +2233,6 @@ struct CMakeWriter
 					}
 					else if (s_platform == "iphoneos")
 					{
-						write_set_ios_bundle_path(sb, app.name.c_str());
-						
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
@@ -2257,22 +2263,23 @@ struct CMakeWriter
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND $<$<CONFIG:Distribution>:\"$<1:${args}>\">\n" \
-				"\tCOMMAND_EXPAND_LISTS)",
+				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND_EXPAND_LISTS)\n",
 				app.name.c_str(),
-				conditional,
-				app.name.c_str());
+				conditional);
 
 		// copy the generated executable
 
+		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:%s> \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+			app.name.c_str(),
+			app.name.c_str());
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:%s> \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND_EXPAND_LISTS)\n",
 			app.name.c_str(),
-			conditional,
-			app.name.c_str(),
-			app.name.c_str());
+			conditional);
 
 		for (auto & library_dependency : library_dependencies)
 		{
@@ -2284,15 +2291,17 @@ struct CMakeWriter
 
 				if (library->shared)
 				{
+					sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+						library_dependency.name.c_str(),
+						app.name.c_str());
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"\n" \
+							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND_EXPAND_LISTS\n" \
 							"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
 						app.name.c_str(),
 						conditional,
-						library_dependency.name.c_str(),
-						app.name.c_str(),
 						library_dependency.name.c_str());
 				}
 
@@ -2311,39 +2320,80 @@ struct CMakeWriter
 					else
 						filename = &dist_file[i + 1];
 
+					sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+						dist_file.c_str(),
+						app.name.c_str());
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
+							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND_EXPAND_LISTS)\n",
 						app.name.c_str(),
-						conditional,
-						dist_file.c_str(),
-						app.name.c_str());
+						conditional);
 				}
 			}
 		}
 
-		// copy resources
+		// copy app resources
 
-	// todo : copy library resources
 		if (app.resource_path.empty() == false)
 		{
+			sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
+				app.name.c_str());
 			sb.AppendFormat(
 				"add_custom_command(\n" \
 					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND %s ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
+					"\tCOMMAND %s \"$<1:${args}>\"\n" \
+					"\tCOMMAND_EXPAND_LISTS)\n",
 					app.name.c_str(),
-					conditional,
-					app.name.c_str());
+					conditional);
 
-			sb.AppendFormat(
-				"add_custom_command(\n" \
-					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND %s ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
-				app.name.c_str(),
-				conditional,
+			sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
 				app.resource_path.c_str(),
 				app.name.c_str());
+			sb.AppendFormat(
+				"add_custom_command(\n" \
+					"\tTARGET %s POST_BUILD\n" \
+					"\tCOMMAND %s \"$<1:${args}>\"\n" \
+					"\tCOMMAND_EXPAND_LISTS)\n",
+					app.name.c_str(),
+					conditional);
+		}
+
+		// copy library resources
+		
+		for (auto & library_dependency : library_dependencies)
+		{
+			if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+			{
+				auto * library = chibi_info.find_library(library_dependency.name.c_str());
+				
+				if (library->resource_path.empty() == false)
+				{
+					sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s/data/libs/%s\")\n",
+						app.name.c_str(),
+						library->name.c_str());
+					sb.AppendFormat(
+						"add_custom_command(\n" \
+							"\tTARGET %s POST_BUILD\n" \
+							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND_EXPAND_LISTS)\n",
+							app.name.c_str(),
+							conditional);
+
+					sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data/libs/%s\")\n",
+						library->resource_path.c_str(),
+						app.name.c_str(),
+						library->name.c_str());
+					sb.AppendFormat(
+						"add_custom_command(\n" \
+							"\tTARGET %s POST_BUILD\n" \
+							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND_EXPAND_LISTS)\n",
+							app.name.c_str(),
+							conditional);
+				}
+			}
 		}
 
 		sb.Append("\n");
@@ -2363,6 +2413,7 @@ struct CMakeWriter
 		return true;
 	}
 
+// todo : check if IOS bundle path is appropriate for OSX too. TARGET_FILE_DIR would be better than trying to guess the path if it actually works
 	static void write_set_osx_bundle_path(StringBuilder & sb, const char * app_name)
 	{
 		// mysterious code snippet to fetch GENERATOR_IS_MULTI_CONFIG.
@@ -2942,10 +2993,13 @@ struct CMakeWriter
 
 				// copy app resources
 				
-				if (s_platform == "macos" || s_platform == "iphoneos")
+				if (s_platform == "macos")
 				{
-				// todo : unset bundle path when we're done processing this app
 					write_set_osx_bundle_path(sb, app->name.c_str());
+				}
+				else if (s_platform == "iphoneos")
+				{
+					write_set_ios_bundle_path(sb, app->name.c_str());
 				}
 				
 				if (!app->resource_path.empty())
@@ -2964,8 +3018,6 @@ struct CMakeWriter
 					}
 					else if (s_platform == "iphoneos")
 					{
-						write_set_ios_bundle_path(sb, app->name.c_str());
-
 						const char * resource_path = "${BUNDLE_PATH}";
 						
 						if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *app, resource_path))
@@ -3010,8 +3062,7 @@ struct CMakeWriter
 							else if (s_platform == "iphoneos")
 								resource_path = "${BUNDLE_PATH}";
 							else
-							// todo : add windows and linux here
-								assert(false);
+								continue; // todo : add windows and linux here
 							
 							assert(resource_path != nullptr);
 							if (resource_path != nullptr)
@@ -3042,8 +3093,7 @@ struct CMakeWriter
 							else if (s_platform == "iphoneos")
 								license_path = "${BUNDLE_PATH}";
 							else
-							// todo : add windows and linux here
-								assert(false);
+								continue; // todo : add windows and linux here
 							
 							assert(license_path != nullptr);
 							if (license_path != nullptr)
@@ -3155,17 +3205,15 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
-			#if 0
 				if (s_platform == "windows")
 				{
 					write_create_windows_app_archive(chibi_info, sb, *app, all_library_dependencies);
 				}
-			#endif
 			
 				if (s_platform == "macos" || s_platform == "iphoneos")
 				{
 					// unset bundle path when we're done processing this app
-					sb.AppendFormat("unset(BUNDLE_PATH)");
+					sb.Append("unset(BUNDLE_PATH)\n");
 				}
 
 				if (!output(f, sb))
@@ -3181,7 +3229,6 @@ struct CMakeWriter
 				sb.AppendFormat("# --- source group memberships for %s ---\n", library->name.c_str());
 				sb.Append("\n");
 				
-			#if 1
 				std::map<std::string, std::vector<ChibiLibraryFile*>> files_by_group;
 
 				for (auto & file : library->files)
@@ -3210,23 +3257,6 @@ struct CMakeWriter
 				
 					empty = false;
 				}
-			#else
-				for (auto & file : library->files)
-				{
-					if (file.group.empty())
-					{
-						sb.AppendFormat("source_group(\"%s\" FILES \"%s\")\n", "", file.filename.c_str());
-						empty = false;
-						continue;
-					}
-					
-					sb.AppendFormat("source_group(\"%s\" FILES \"%s\")\n", file.group.c_str(), file.filename.c_str());
-				
-					empty = false;
-				}
-				
-				sb.Append("\n");
-			#endif
 				
 				if (empty == false)
 				{
