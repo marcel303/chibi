@@ -18,6 +18,8 @@
 using namespace chibi;
 using namespace chibi_filesystem;
 
+#define APPVEYOR_TEST_HACKS 1 // hack to remote-troubleshoot strange push/pop_group issue that only occurs on the appveyor build machine
+
 /*
 brew install ccache
 */
@@ -504,6 +506,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						return false;
 					}
 					
+				#if APPVEYOR_TEST_HACKS
+					report_error(line, "pusing group: '%s'", name);
+				#endif
+
 					group_stack.push_back(name);
 				}
 				else if (eat_word(linePtr, "pop_group"))
@@ -513,6 +519,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						report_error(line, "no group left to pop");
 						return false;
 					}
+
+				#if APPVEYOR_TEST_HACKS
+					report_error(line, "popping group: '%s'", group_stack.back().c_str());
+				#endif
 
 					group_stack.pop_back();
 				}
