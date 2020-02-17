@@ -52,14 +52,14 @@ brew install ccache
 		{
 			auto pos = ftell(file);
 
-			const char * r = fgets(line, line_size, file);
+			const char * r = fgets(line, (int)line_size, file);
 
 			if (r == nullptr)
 				break;
 
-			const int length = strlen(line);
+			const size_t length = strlen(line);
 
-			if (length == line_size - 1)
+			if (length + 1 == line_size)
 			{
 				free(line);
 

@@ -11,35 +11,35 @@ namespace chibi
 		'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/'
 	};
 
-	std::string base64_encode(const void * in_bytes, const int numBytes)
+	std::string base64_encode(const void * in_bytes, const size_t numBytes)
 	{
 		std::string result;
 		
 		if (numBytes == 0)
 			return result;
 
-		const uint8_t* bytes = (const uint8_t*)in_bytes;
-		const int byteCount = numBytes;
+		const uint8_t * bytes = (const uint8_t*)in_bytes;
+		const size_t byteCount = numBytes;
 		
-		const int expectedCharacterCount = (byteCount * 8 + 5) / 6;
-		const int expectedResultSize = (expectedCharacterCount + 3) / 4 * 4;
+		const size_t expectedCharacterCount = (byteCount * 8 + 5) / 6;
+		const size_t expectedResultSize = (expectedCharacterCount + 3) / 4 * 4;
 		result.reserve(expectedResultSize);
 		
-		int baseIndex = 0;
+		size_t baseIndex = 0;
 		
 		unsigned char inbuf[3];
 		unsigned char outbuf[4];
 		
 		for (;;)
 		{
-			const int todo = byteCount - baseIndex;
-			
-			if (todo <= 0)
+			if (baseIndex >= byteCount)
 				break;
+
+			const size_t todo = byteCount - baseIndex;
 			
 			for (int i = 0; i < 3; i++)
 			{
-				int index = baseIndex + i;
+				const size_t index = baseIndex + i;
 				
 				if (index < byteCount)
 					inbuf[i] = bytes[index];
