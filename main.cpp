@@ -141,7 +141,7 @@ int main(int argc, const char * argv[])
 		return -1;
 	}
 	
-	const int numTargets = build_targets.size();
+	const int numTargets = (int)build_targets.size();
 	const char ** targets = (const char**)alloca(numTargets * sizeof(char*));
 	
 	int index = 0;
