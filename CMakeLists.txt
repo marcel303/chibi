@@ -6,7 +6,20 @@ project(chibi)
 
 # --- chibi ---
 
-add_executable(chibi base64.cpp base64.h chibi.cpp chibi.h filesystem.cpp filesystem.h plistgenerator.cpp plistgenerator.h stringbuilder.cpp stringbuilder.h stringhelpers.h main.cpp)
+add_executable(
+	chibi
+	base64.cpp
+	base64.h
+	chibi.cpp
+	chibi.h
+	filesystem.cpp
+	filesystem.h
+	plistgenerator.cpp
+	plistgenerator.h
+	stringbuilder.cpp
+	stringbuilder.h
+	stringhelpers.h
+	main.cpp)
 
 if (WIN32)
 	target_compile_definitions(chibi PUBLIC WINDOWS)

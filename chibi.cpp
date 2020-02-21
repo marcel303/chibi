@@ -37,7 +37,7 @@ brew install ccache
 		#define PATH_MAX _MAX_PATH
 	#endif
 	typedef SSIZE_T ssize_t;
-	static ssize_t getline(char ** _line, size_t * _line_size, FILE * file)
+	static ssize_t my_getline(char ** _line, size_t * _line_size, FILE * file)
 	{
 		char *& line = *_line;
 		size_t & line_size = *_line_size;
@@ -69,13 +69,25 @@ brew install ccache
 				fseek(file, pos, SEEK_SET);
 			}
 			else
-				return length;
+			{
+				int trimmed_length = 0;
+				
+				for (int i = 0; line[i] != 0; ++i)
+					if (line[i] != '\r')
+						line[trimmed_length++] = line[i];
+				
+				line[trimmed_length] = 0;
+
+				return trimmed_length;
+			}
 		}
 
 		return -1;
 	}
 #else
 	#include <unistd.h>
+
+	#define my_getline getline
 #endif
 
 #if defined(__GNUC__)
@@ -439,7 +451,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 
 		for (;;)
 		{
-			ssize_t r = getline(&line, &lineSize, f);
+			ssize_t r = my_getline(&line, &lineSize, f);
 
 			if (r < 0)
 			{
@@ -448,7 +460,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 			}
 			else
 			{
-				printf("%s\n", line);
+				//printf("%s\n", line);
 				
 				s_current_line_length = r;
 				
@@ -3426,7 +3438,7 @@ bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool s
 			char * line = nullptr;
 			size_t lineSize = 0;
 			
-			const ssize_t r = getline(&line, &lineSize, f);
+			const ssize_t r = my_getline(&line, &lineSize, f);
 			
 			if (r >= 0)
 			{
