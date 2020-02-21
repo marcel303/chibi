@@ -442,7 +442,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 			ssize_t r = getline(&line, &lineSize, f);
 
 			if (r < 0)
+			{
+				s_current_line_length = 0;
 				break;
+			}
 			else
 			{
 				printf("%s\n", line);
