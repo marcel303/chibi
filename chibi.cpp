@@ -18,8 +18,6 @@
 using namespace chibi;
 using namespace chibi_filesystem;
 
-#define APPVEYOR_TEST_HACKS 1 // hack to remote-troubleshoot strange push/pop_group issue that only occurs on the appveyor build machine
-
 /*
 brew install ccache
 */
@@ -44,7 +42,7 @@ brew install ccache
 
 		if (line == nullptr)
 		{
-			line_size = 32;
+			line_size = 4096;
 			line = (char*)malloc(line_size);
 		}
 
@@ -66,20 +64,17 @@ brew install ccache
 				line_size *= 2;
 				line = (char*)malloc(line_size);
 
-				fseek(file, pos, SEEK_SET);
+				// for some reason, fseek fails to seek to the location from before the read, as determined by ftell above
+				// ths _should_ work, but is broken on Windows. so instead I bumped the initial line size above as a work
+				// around, and processing of files with lines larger than the initial size (which will re-alloc and re-read)
+				// are likely to fail for now ..
+				int seek_result = fseek(file, pos, SEEK_SET);
+
+				if (seek_result != 0)
+					return -1;
 			}
 			else
-			{
-				int trimmed_length = 0;
-				
-				for (int i = 0; line[i] != 0; ++i)
-					if (line[i] != '\r')
-						line[trimmed_length++] = line[i];
-				
-				line[trimmed_length] = 0;
-
-				return trimmed_length;
-			}
+				return length;
 		}
 
 		return -1;
@@ -508,7 +503,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan))
 						{
-							report_error(line, "failed to create absolute path");
+							report_error(line, "failed to process chibi file: %s", chibi_file);
 							return false;
 						}
 						
@@ -527,10 +522,6 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						return false;
 					}
 					
-				#if APPVEYOR_TEST_HACKS
-					report_error(line, "pusing group: '%s'", name);
-				#endif
-
 					group_stack.push_back(name);
 				}
 				else if (eat_word(linePtr, "pop_group"))
@@ -540,10 +531,6 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						report_error(line, "no group left to pop");
 						return false;
 					}
-
-				#if APPVEYOR_TEST_HACKS
-					report_error(line, "popping group: '%s'", group_stack.back().c_str());
-				#endif
 
 					group_stack.pop_back();
 				}
