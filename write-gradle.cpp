@@ -60,7 +60,12 @@ static void pop_dir()
 
 static const char * s_androidManifestTemplateForApp =
 R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.chibi.generated.lib" android:versionCode="1" android:versionName="1.0" android:installLocation="auto">
+<manifest
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	package="%s"
+	android:versionCode="1"
+	android:versionName="1.0"
+	android:installLocation="auto">
 
 	<!-- Tell the system this app requires OpenGL ES 3.1. -->
 	<uses-feature android:glEsVersion="0x00030001" android:required="true"/>
@@ -75,22 +80,33 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-	<application android:allowBackup="false" android:label="${appName}">
+	<application
+		android:allowBackup="false"
+		android:fullBackupContent="false"
+		android:label="${appName}"
+		android:hasCode="false">
+
 		<meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
+
 		<!-- launchMode is set to singleTask because there should never be multiple copies of the app running -->
 		<!-- Theme.Black.NoTitleBar.Fullscreen gives solid black instead of a (bad stereoscopic) gradient on app transition -->
         <!-- If targeting API level 24+, configChanges should additionally include 'density'. -->
         <!-- If targeting API level 24+, android:resizeableActivity="false" should be added. -->
+        <!-- todo : restore activity to derivative of : com.oculus.sdk.GLES3JNIActivity -->
 		<activity
-				android:name="com.oculus.sdk.GLES3JNIActivity"
+				android:name="android.app.NativeActivity"
 				android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
 				android:launchMode="singleTask"
 				android:screenOrientation="landscape"
 				android:excludeFromRecents="false"
 				android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode">
-      <!-- Indicate the activity is aware of VrApi focus states required for system overlays  -->
-      <meta-data android:name="com.oculus.vr.focusaware" android:value="true"/>
-      <!-- This filter lets the apk show up as a launchable icon. -->
+
+			<meta-data android:name="android.app.lib_name" android:value="%s" />
+
+			<!-- Indicate the activity is aware of VrApi focus states required for system overlays  -->
+			<meta-data android:name="com.oculus.vr.focusaware" android:value="true"/>
+
+			<!-- This filter lets the apk show up as a launchable icon. -->
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
 				<category android:name="android.intent.category.LAUNCHER" />
@@ -101,7 +117,12 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 
 static const char * s_androidManifestTemplateForLib =
 R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.chibi.generated.lib" android:versionCode="1" android:versionName="1.0" android:installLocation="auto">
+<manifest
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	package="com.chibi.generated.lib"
+	android:versionCode="1"
+	android:versionName="1.0"
+	android:installLocation="auto">
 
 	<!-- Tell the system this app requires OpenGL ES 3.1. -->
 	<uses-feature android:glEsVersion="0x00030001" android:required="true"/>
@@ -118,6 +139,32 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 </manifest>)MANIFEST";
 
 static S s;
+
+static char id_buffer[256];
+static const char * make_valid_id(const char * id)
+{
+	int i = 0;
+	while (id[i] != 0)
+	{
+		if (id[i] == '-')
+			id_buffer[i] = '_';
+		else
+			id_buffer[i] = id[i];
+		++i;
+	}
+	id_buffer[i++] = 0;
+	return id_buffer;
+}
+
+static const char * libstrip_name(const char * name)
+{
+	// Android NDK build has the annoying behavior to strip 'lib' from the target name and later add it again for all targets
+	// I haven't been able to make it preserve the lib prefix, so instead we will remove it where needed to mirror this behavior
+	if (memcmp(name, "lib", 3) == 0)
+		return name + 3;
+	else
+		return name;
+}
 
 namespace chibi
 {
@@ -274,10 +321,7 @@ namespace chibi
 		{
 		// todo : add chibi option to set Android app id. if not set, auto-generate one
 		// todo : add chibi option to set Android manifest file. if not set, auto-generate one
-			std::string appId = std::string("com.chibi.generated.") + library->name;
-			for (auto & c : appId)
-				if (c == '-')
-					c = '_'; // valid Android app ids are [a-zA-Z0-9_]
+			std::string appId = std::string("com.chibi.generated.lib.") + make_valid_id(library->name.c_str());
 
 			push_dir(library->name.c_str());
 			push_dir("Projects");
@@ -302,7 +346,7 @@ namespace chibi
 					s << "  // -debug.apk or -release.apk appended to it.";
 					s << "  // The filename doesn't effect the Android installation process.";
 					s << "  // Use only letters to remain compatible with the package name.";
-					s >> "  project.archivesBaseName = \"" >> library->name.c_str() << "\"";
+					s >> "  project.archivesBaseName = \"" >> make_valid_id(library->name.c_str()) << "\""; // todo : do we need to fixup archive base name ?
 					s << "  ";
 					s << "  defaultConfig {";
 					if (library->isExecutable)
@@ -316,16 +360,16 @@ namespace chibi
 					s << "    targetSdkVersion 25";
 					s << "    compileSdkVersion 26";
 					s << "    ";
-					s >> "    manifestPlaceholders = [appId:\"" >> appId.c_str() >> "\", appName:\"" >> library->name.c_str() << "\"]";
+					s >> "    manifestPlaceholders = [appId:\"" >> appId.c_str() >> "\", appName:\"" >> make_valid_id(library->name.c_str()) << "\"]";
 					s << "    ";
 					s << "    ";
 					s << "    // override app plugin abiFilters for 64-bit support";
 					s << "    externalNativeBuild {";
 					s << "        ndk {";
-					s << "          abiFilters 'arm64-v8a'";
+					s << "          //abiFilters 'arm64-v8a'";
 					s << "        }";
 					s << "        ndkBuild {";
-					s << "          abiFilters 'arm64-v8a'";
+					s << "          //abiFilters 'arm64-v8a'";
 					s << "        }";
 					s << "    }";
 					s << "  }";
@@ -343,6 +387,15 @@ namespace chibi
 					s << "      jniLibs.srcDir 'libs'";
 					s << "      res.srcDirs = ['../../res']";
 					s << "      assets.srcDirs = ['../../assets']";
+					s << "    }";
+					s << "  }";
+					s << "";
+					s << "  splits {";
+					s << "    abi { // Configures multiple APKs based on ABI.";
+					s << "      enable true // Enables building multiple APKs per ABI.";
+					s << "      universalApk false // Specifies that we do not want to also generate a universal APK that includes all ABIs.";
+					s << "      reset()  // Clears the default list from all ABIs to no ABIs.";
+					s << "      include 'arm64-v8a', 'x86'";
 					s << "    }";
 					s << "  }";
 					s << "";
@@ -377,15 +430,22 @@ namespace chibi
 
 						s >> "LOCAL_SRC_FILES         :=";
 						for (auto & file : library->files)
-							s >> " " >> file.filename.c_str();
+						{
+							// the Android NDK build will complain about files it doesn't know how to compile,
+							// so we must take care to only include c and c++ source files here
+							auto extension = get_path_extension(file.filename, true);
+							if (extension == "c" || extension == "cc" || extension == "cpp")
+								s >> " " >> file.filename.c_str();
+						}
+						if (library->isExecutable)
+							s >> " " >> output_path << "/nativeactivity/file.cpp"; // todo : remove. here to test native activity using the glue library provided by the Android NDK
 						s << "";
 
 						// write header paths
 						
 						s >> "LOCAL_C_INCLUDES        :=";
 						for (auto & header_path : library->header_paths)
-							if (header_path.expose == false)
-								s >> " " >> header_path.path.c_str();
+							s >> " " >> header_path.path.c_str();
 						s << "";
 						
 						s >> "LOCAL_EXPORT_C_INCLUDES :=";
@@ -402,13 +462,10 @@ namespace chibi
 						
 						s >> "LOCAL_CFLAGS            :=";
 						for (auto & compile_definition : library->compile_definitions)
-							if (compile_definition.expose == false)
-							{
-								if (compile_definition.value.empty())
-									s >> " -D" >> compile_definition.name.c_str();
-								else
-									s >> " -D" >> compile_definition.name.c_str() >> "=" >> compile_definition.value.c_str();
-							}
+							if (compile_definition.value.empty())
+								s >> " -D" >> compile_definition.name.c_str();
+							else
+								s >> " -D" >> compile_definition.name.c_str() >> "=" >> compile_definition.value.c_str();
 						if (library->isExecutable && library->resource_path.empty() == false)
 							s >> " -DCHIBI_RESOURCE_PATH=\\\"" >> library->resource_path.c_str() >> "\\\"";
 						s << "";
@@ -432,6 +489,8 @@ namespace chibi
 								if (dep_library->name == library_dependency.name)
 									if (dep_library->shared == false)
 										s >> " " >> dep_library->name.c_str();
+						if (library->isExecutable)
+							s >> " android_native_app_glue";
 						s << "";
 
 						s >> "LOCAL_SHARED_LIBRARIES  :=";
@@ -472,7 +531,11 @@ namespace chibi
 						for (auto & library_dependency : library->library_dependencies)
 							s >> "$(call import-module," >> library_dependency.name.c_str() << "/Projects/Android/jni)";
 						s << "";
-
+						
+						if (library->isExecutable)
+							s >> "$(call import-module,android/native_app_glue)";
+						s << "";
+						
 						// todo : write license files
 					}
 					fclose(f);
@@ -483,7 +546,6 @@ namespace chibi
 					f = fopen("Application.mk", "wt");
 					{
 						s >> "NDK_MODULE_PATH := " << output_path;
-						s << "APP_ABI         := arm64-v8a";
 						s << "APP_STL         := c++_shared";
 						s << "APP_DEBUG       := true";
 					}
@@ -497,7 +559,7 @@ namespace chibi
 				f = fopen("AndroidManifest.xml", "wt");
 				{
 					if (library->isExecutable)
-						fprintf(f, "%s", s_androidManifestTemplateForApp);
+						fprintf(f, s_androidManifestTemplateForApp, appId.c_str(), libstrip_name(library->name.c_str()));
 					else
 						fprintf(f, "%s", s_androidManifestTemplateForLib);
 				}
