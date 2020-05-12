@@ -12,6 +12,7 @@ add_executable(
 	base64.h
 	chibi.cpp
 	chibi.h
+	chibi-internal.h
 	filesystem.cpp
 	filesystem.h
 	plistgenerator.cpp
@@ -19,6 +20,7 @@ add_executable(
 	stringbuilder.cpp
 	stringbuilder.h
 	stringhelpers.h
+	write-gradle.cpp
 	main.cpp)
 
 if (WIN32)

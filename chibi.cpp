@@ -1,4 +1,5 @@
 #include "base64.h"
+#include "chibi-internal.h"
 #include "filesystem.h"
 #include "plistgenerator.h"
 #include "stringbuilder.h"
@@ -18,11 +19,12 @@
 using namespace chibi;
 using namespace chibi_filesystem;
 
-/*
-brew install ccache
-*/
+namespace chibi
+{
+	bool write_gradle_files(const ChibiInfo & chibi_info, const char * output_path);
+}
 
-#define ENABLE_PKGCONFIG 0 // todo : pkgconfig shouldn't be used in chibi.txt files. but it would be nice to define libraries using pkgconfig externally, as a sort of aliases, which can be used in a normalized fashion as a regular library
+// for MacOS users : "brew install ccache"
 
 // todo : add basic wildcard support ("include/*.cpp")
 // todo : create library targets which are an alias for an existing system library, such as libusb, libsdl2, etc -> will allow to normalize library names, and to use either the system version or compile from source version interchangable
@@ -173,182 +175,6 @@ static bool is_absolute_path(const char * path)
 	return false;
 #endif
 }
-
-struct ChibiLibraryFile
-{
-	std::string filename;
-	
-	std::string group;
-	
-	std::string conglomerate_filename;
-	
-	bool compile = true;
-};
-
-struct ChibiLibraryDependency
-{
-	enum Type
-	{
-		kType_Undefined,
-		kType_Generated,
-		kType_Local,
-		kType_Find,
-		kType_Global
-	};
-	
-	std::string name;
-	std::string path;
-	
-	Type type = kType_Undefined;
-	
-	bool embed_framework = false;
-};
-
-struct ChibiPackageDependency
-{
-	enum Type
-	{
-		kType_Undefined,
-		kType_FindPackage,
-	#if ENABLE_PKGCONFIG
-		kType_PkgConfig
-	#endif
-	};
-	
-	std::string name;
-	std::string variable_name;
-	
-	Type type = kType_Undefined;
-};
-
-struct ChibiHeaderPath
-{
-	std::string path;
-	
-	bool expose = false;
-	
-	std::string alias_through_copy;
-	std::string alias_through_copy_path;
-};
-
-struct ChibiCompileDefinition
-{
-	std::string name;
-	std::string value;
-	
-	bool expose = false;
-	
-	std::string toolchain;
-	
-	std::vector<std::string> configs;
-};
-
-struct ChibiLibrary
-{
-	std::string name;
-	std::string path;
-	std::string group_name;
-	std::string chibi_file;
-	
-	bool shared = false;
-	
-	bool isExecutable = false;
-	
-	std::vector<ChibiLibraryFile> files;
-	
-	std::vector<ChibiLibraryDependency> library_dependencies;
-	
-	std::vector<ChibiPackageDependency> package_dependencies;
-	
-	std::vector<ChibiHeaderPath> header_paths;
-	
-	std::vector<ChibiCompileDefinition> compile_definitions;
-	
-	std::map<std::string, std::string> conglomerate_groups; // best-guess group names for conglomerate files
-	
-	std::string resource_path;
-	std::vector<std::string> resource_excludes;
-
-	std::vector<std::string> dist_files;
-
-	std::vector<std::string> license_files;
-
-	std::vector<std::string> link_translation_unit_using_function_calls;
-	
-	void dump_info() const
-	{
-		printf("%s: %s\n", isExecutable ? "app" : "library", name.c_str());
-		
-		for (auto & file : files)
-		{
-			printf("\tfile: %s\n", file.filename.c_str());
-			if (file.group.empty() == false)
-				printf("\t\tgroup: %s\n", file.group.c_str());
-		}
-		
-		for (auto & header_path : header_paths)
-		{
-			printf("\theader path: %s\n", header_path.path.c_str());
-			if (header_path.expose)
-				printf("\t\texpose\n");
-			if (header_path.alias_through_copy.empty() == false)
-				printf("\t\talias_through_copy: %s\n", header_path.alias_through_copy.c_str());
-		}
-	}
-};
-
-struct ChibiInfo
-{
-	std::set<std::string> build_targets;
-	
-	std::vector<ChibiLibrary*> libraries;
-	
-	std::vector<std::string> cmake_module_paths;
-	
-	bool library_exists(const char * name) const
-	{
-		for (auto & library : libraries)
-		{
-			if (library->name == name)
-				return true;
-		}
-		
-		return false;
-	}
-	
-	ChibiLibrary * find_library(const char * name) const
-	{
-		for (auto & library : libraries)
-			if (library->name == name)
-				return library;
-		
-		return nullptr;
-	}
-	
-	bool should_build_target(const char * name) const
-	{
-		if (build_targets.empty())
-			return true;
-		else if (build_targets.count(name) != 0)
-			return true;
-		else
-		{
-			for (auto & build_target : build_targets)
-				if (match_wildcard(name, build_target.c_str()))
-					return true;
-		}
-		
-		return false;
-	}
-	
-	void dump_info() const
-	{
-		for (auto & library : libraries)
-		{
-			library->dump_info();
-		}
-	}
-};
 
 // fixme : make all of these safe for concurrent use of library version of chibi
 
@@ -1593,7 +1419,7 @@ struct CMakeWriter
 		libraries.push_back(&library);
 		
 		return true;
-	};
+	}
 	
 	template <typename S>
 	static bool write_app_resource_paths(
@@ -2089,15 +1915,15 @@ struct CMakeWriter
 					
 					if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 					{
-						const ChibiLibrary * library = chibi_info.find_library(library_dependency.name.c_str());
+						const ChibiLibrary * resolved_library = chibi_info.find_library(library_dependency.name.c_str());
 						
-						if (library == nullptr)
+						if (resolved_library == nullptr)
 						{
-							report_error(nullptr, "failed to resolve library dependency: %s", library_dependency.name.c_str());
+							report_error(nullptr, "failed to resolve library dependency: %s for library %s", library_dependency.name.c_str(), library->name.c_str());
 							return false;
 						}
 
-						stack.push_back(library);
+						stack.push_back(resolved_library);
 					}
 				}
 			}
@@ -2462,11 +2288,11 @@ struct CMakeWriter
 		sb.AppendFormat("\tset(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>\")\n", app_name);
 	}
 
-	static bool generate_translation_unit_linkage_files(const ChibiInfo & chibi_info, StringBuilder & sb, const char * generated_path)
+	static bool generate_translation_unit_linkage_files(const ChibiInfo & chibi_info, StringBuilder & sb, const char * generated_path, const std::vector<ChibiLibrary*> & libraries)
 	{
 		// generate translation unit linkage files
 
-		for (auto * app : chibi_info.libraries)
+		for (auto * app : libraries)
 		{
 			if (app->isExecutable == false)
 				continue;
@@ -2603,6 +2429,8 @@ struct CMakeWriter
 				});
 		}
 		
+	// todo : make conglomerate generation independent of cmake writer
+
 		// generate conglomerate files
 		
 		for (auto * library : libraries)
@@ -2875,12 +2703,14 @@ struct CMakeWriter
 			}
 
 			{
+				// generate translation unit linkage files
+
 				StringBuilder sb;
 				
 				sb.AppendFormat("# --- translation unit linkage files ---\n");
 				sb.Append("\n");
 
-				if (generate_translation_unit_linkage_files(chibi_info, sb, generated_path) == false)
+				if (generate_translation_unit_linkage_files(chibi_info, sb, generated_path, libraries) == false)
 					return false;
 
 				if (!output(f, sb))
@@ -3525,20 +3355,27 @@ bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst
 
 	//
 	
-	char output_filename[PATH_MAX];
-	
-	if (!concat(output_filename, sizeof(output_filename), dst_path, "/", "CMakeLists.txt"))
+	if (is_platform("android"))
 	{
-		report_error(nullptr, "failed to create absolute path");
-		return false;
+		write_gradle_files(chibi_info, dst_path);
 	}
-	
-	CMakeWriter writer;
-	
-	if (!writer.write(chibi_info, output_filename))
+	else
 	{
-		report_error(nullptr, "an error occured while generating cmake file");
-		return false;
+		char output_filename[PATH_MAX];
+		
+		if (!concat(output_filename, sizeof(output_filename), dst_path, "/", "CMakeLists.txt"))
+		{
+			report_error(nullptr, "failed to create absolute path");
+			return false;
+		}
+		
+		CMakeWriter writer;
+		
+		if (!writer.write(chibi_info, output_filename))
+		{
+			report_error(nullptr, "an error occured while generating cmake file");
+			return false;
+		}
 	}
 
 	return true;
