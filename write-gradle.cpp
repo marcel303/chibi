@@ -3,6 +3,10 @@
 
 //
 
+#define ENABLE_LOGGING 0 // do not alter
+
+//
+
 #if defined(__GNUC__)
 	#define sprintf_s(s, ss, f, ...) snprintf(s, ss, f, __VA_ARGS__)
 	#define vsprintf_s(s, ss, f, a) vsnprintf(s, ss, f, a)
@@ -84,7 +88,7 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 		android:allowBackup="false"
 		android:fullBackupContent="false"
 		android:label="${appName}"
-		android:hasCode="false">
+		android:hasCode="true">
 
 		<meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
 
@@ -92,9 +96,11 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 		<!-- Theme.Black.NoTitleBar.Fullscreen gives solid black instead of a (bad stereoscopic) gradient on app transition -->
         <!-- If targeting API level 24+, configChanges should additionally include 'density'. -->
         <!-- If targeting API level 24+, android:resizeableActivity="false" should be added. -->
-        <!-- todo : restore activity to derivative of : com.oculus.sdk.GLES3JNIActivity -->
+        <!-- todo : add support to libraries to define a native activity -->
+        <!-- note : com.oculus.sdk.GLES3JNIActivity for the Oculus VR native activity -->
+        <!-- note : android.app.NativeActivity for the native app glue activity -->
 		<activity
-				android:name="android.app.NativeActivity"
+				android:name="com.oculus.sdk.GLES3JNIActivity"
 				android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
 				android:launchMode="singleTask"
 				android:screenOrientation="landscape"
@@ -395,7 +401,8 @@ namespace chibi
 					s << "      enable true // Enables building multiple APKs per ABI.";
 					s << "      universalApk false // Specifies that we do not want to also generate a universal APK that includes all ABIs.";
 					s << "      reset()  // Clears the default list from all ABIs to no ABIs.";
-					s << "      include 'arm64-v8a', 'x86'";
+					//s << "      include 'arm64-v8a', 'x86'";
+					s << "      include 'arm64-v8a'";
 					s << "    }";
 					s << "  }";
 					s << "";
@@ -434,11 +441,15 @@ namespace chibi
 							// the Android NDK build will complain about files it doesn't know how to compile,
 							// so we must take care to only include c and c++ source files here
 							auto extension = get_path_extension(file.filename, true);
-							if (extension == "c" || extension == "cc" || extension == "cpp")
+							if (library->prebuilt || (extension == "c" || extension == "cc" || extension == "cpp"))
 								s >> " " >> file.filename.c_str();
+						#if ENABLE_LOGGING
+							else
+								printf("silently dropping source file %s, since the NDK build would complain about it not recognizing it", file.filename.c_str());
+						#endif
 						}
-						if (library->isExecutable)
-							s >> " " >> output_path << "/nativeactivity/file.cpp"; // todo : remove. here to test native activity using the glue library provided by the Android NDK
+						//if (library->isExecutable)
+						//	s >> " " >> output_path >> "/nativeactivity/file.cpp"; // todo : remove. here to test native activity using the glue library provided by the Android NDK
 						s << "";
 
 						// write header paths
@@ -454,8 +465,10 @@ namespace chibi
 								s >> " " >> header_path.path.c_str();
 						s << "";
 						
-					// todo : remoove these hacky LDLIBS
-						s << "LOCAL_LDLIBS            := -llog -landroid -lGLESv3 -lEGL";
+					// todo : remove these hacky LDLIBS
+					// todo : add LDLIBS from library dependencies
+						if (library->isExecutable)
+							s << "LOCAL_LDLIBS            := -llog -landroid -lGLESv3 -lEGL";
 						s << "";
 
 						// write compile definitions
@@ -499,18 +512,22 @@ namespace chibi
 								if (dep_library->name == library_dependency.name)
 									if (dep_library->shared == true)
 										s >> " " >> dep_library->name.c_str();
-						//if (library->isExecutable)
-						//	s >> " vrapi"; // todo : remove
+						if (library->isExecutable)
+							s >> " vrapi"; // todo : remove
 						s << "";
 						s << "";
 						
-						s << "LOCAL_CPP_FEATURES      += exceptions";
-						s << "LOCAL_CPP_FEATURES      += rtti";
-						s << "";
+					// todo : completely separate out prebuilt libraries. there are too many differences
+						if (library->prebuilt == false)
+						{
+							s << "LOCAL_CPP_FEATURES      += exceptions";
+							s << "LOCAL_CPP_FEATURES      += rtti";
+							s << "";
+						}
 
 						// include 'build library' script
 
-						if (library->shared || library->isExecutable)
+						if (library->isExecutable)
 						{
 							s << "# note : BUILD_SHARED_LIBRARY is a built-in NDK makefile";
 							s << "#        which will generate a shared library from LOCAL_SRC_FILES";
@@ -518,23 +535,57 @@ namespace chibi
 						}
 						else
 						{
-							
-							s << "# note : BUILD_STATIC_LIBRARY is a built-in NDK makefile";
-							s << "#        which will generate a static library from LOCAL_SRC_FILES";
-							s << "include $(BUILD_STATIC_LIBRARY)";
+							if (library->prebuilt)
+							{
+								if (library->shared)
+								{
+									s << "# note : PREBUILT_SHARED_LIBRARY is a built-in NDK makefile";
+									s << "#        which will link with the shared library files from LOCAL_SRC_FILES";
+									s << "include $(PREBUILT_SHARED_LIBRARY)";
+								}
+								else
+								{
+									
+									s << "# note : PREBUILT_STATIC_LIBRARY is a built-in NDK makefile";
+									s << "#        which will link with the static library files from LOCAL_SRC_FILES";
+									s << "include $(PREBUILT_STATIC_LIBRARY)";
+								}
+							}
+							else
+							{
+								if (library->shared)
+								{
+									s << "# note : BUILD_SHARED_LIBRARY is a built-in NDK makefile";
+									s << "#        which will generate a shared library from LOCAL_SRC_FILES";
+									s << "include $(BUILD_SHARED_LIBRARY)";
+								}
+								else
+								{
+									
+									s << "# note : BUILD_STATIC_LIBRARY is a built-in NDK makefile";
+									s << "#        which will generate a static library from LOCAL_SRC_FILES";
+									s << "include $(BUILD_STATIC_LIBRARY)";
+								}
+							}
 						}
 						s << "";
 
 						// write library imports
 
-						//s << "$(call import-module,VrApi/Projects/AndroidPrebuilt/jni)"; // todo : remove
-						for (auto & library_dependency : library->library_dependencies)
-							s >> "$(call import-module," >> library_dependency.name.c_str() << "/Projects/Android/jni)";
-						s << "";
+						if (library->isExecutable)
+							s << "$(call import-module,VrApi/Projects/AndroidPrebuilt/jni)"; // todo : remove
+						if (library->library_dependencies.empty() == false)
+						{
+							for (auto & library_dependency : library->library_dependencies)
+								s >> "$(call import-module," >> library_dependency.name.c_str() << "/Projects/Android/jni)";
+							s << "";
+						}
 						
 						if (library->isExecutable)
+						{
 							s >> "$(call import-module,android/native_app_glue)";
-						s << "";
+							s << "";
+						}
 						
 						// todo : write license files
 					}

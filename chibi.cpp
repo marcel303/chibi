@@ -393,6 +393,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 					
 					const char * name;
 					bool shared = false;
+					bool prebuilt = false;
 					
 					if (!eat_word_v2(linePtr, name))
 					{
@@ -409,6 +410,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						if (!strcmp(option, "shared"))
 							shared = true;
+						else if (!strcmp(option, "prebuilt"))
+							prebuilt = true;
 						else
 						{
 							report_error(line, "unknown option: %s", option);
@@ -432,6 +435,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						library->group_name = group_stack.back();
 					
 					library->shared = shared;
+					library->prebuilt = prebuilt;
 					
 					chibi_info.libraries.push_back(library);
 					
@@ -507,6 +511,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							? nullptr
 							: conglomerate_stack.back().c_str();
 						
+						bool absolute = false;
+						
 						bool done = false;
 						
 						// parse file list
@@ -524,16 +530,9 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							if (!strcmp(filename, "-"))
 								break;
 							
-							char full_path[PATH_MAX];
-							if (!concat(full_path, sizeof(full_path), chibi_path, "/", filename))
-							{
-								report_error(line, "failed to create absolute path");
-								return false;
-							}
-							
 							ChibiLibraryFile file;
 							
-							file.filename = full_path;
+							file.filename = filename;
 							
 							library_files.push_back(file);
 						}
@@ -568,11 +567,30 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 										return false;
 									}
 								}
+								else if (!strcmp(option, "absolute"))
+								{
+									absolute = true;
+								}
 								else
 								{
 									report_error(line, "unknown option: %s", option);
 									return false;
 								}
+							}
+						}
+						
+						if (absolute == false)
+						{
+							for (auto & library_file : library_files)
+							{
+								char full_path[PATH_MAX];
+								if (!concat(full_path, sizeof(full_path), chibi_path, "/", library_file.filename.c_str()))
+								{
+									report_error(line, "failed to create absolute path");
+									return false;
+								}
+								
+								library_file.filename = full_path;
 							}
 						}
 						

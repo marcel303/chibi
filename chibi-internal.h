@@ -86,7 +86,8 @@ struct ChibiLibrary
 	std::string group_name;
 	std::string chibi_file;
 	
-	bool shared = false;
+	bool shared = false; // generate a shared library
+	bool prebuilt = false; // library contains prebuilt files instead of source files
 	
 	bool isExecutable = false;
 	
