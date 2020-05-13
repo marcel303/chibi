@@ -317,7 +317,7 @@ namespace chibi
 				s << "rootProject.name = 'Project'";
 				s << "";
 				for (auto & library : libraries)
-					s >> "include '" >> library->name.c_str() << ":Projects:Android'";
+					s >> "include ':" >> library->name.c_str() << "'";
 			}
 			fclose(f);
 			f = nullptr;
@@ -330,8 +330,6 @@ namespace chibi
 			std::string appId = std::string("com.chibi.generated.lib.") + make_valid_id(library->name.c_str());
 
 			push_dir(library->name.c_str());
-			push_dir("Projects");
-			push_dir("Android");
 			{
 				// generate build.gradle file for each library and app
 
@@ -344,7 +342,7 @@ namespace chibi
 					s << "";
 					s << "dependencies {";
 					for (auto & library_dependency : library->library_dependencies)
-						s >> "  implementation project(':" >> library_dependency.name.c_str() << ":Projects:Android')";
+						s >> "  implementation project(':" >> library_dependency.name.c_str() << "')";
 					s << "}";
 					s << "";
 					s << "android {";
@@ -390,10 +388,10 @@ namespace chibi
 					s << "    main {";
 					s << "      manifest.srcFile 'AndroidManifest.xml'";
 					if (library->isExecutable)
-					s << "      java.srcDirs = ['../../../java']"; // fixme : make unshared by copying files
+					s << "      java.srcDirs = ['../java']"; // fixme : make unshared by copying files
 					s << "      jniLibs.srcDir 'libs'";
-					s << "      res.srcDirs = ['../../res']";
-					s << "      assets.srcDirs = ['../../assets']";
+					s << "      res.srcDirs = ['res']";
+					s << "      assets.srcDirs = ['assets']";
 					s << "    }";
 					s << "  }";
 					s << "";
@@ -573,7 +571,7 @@ namespace chibi
 						if (library->library_dependencies.empty() == false)
 						{
 							for (auto & library_dependency : library->library_dependencies)
-								s >> "$(call import-module," >> library_dependency.name.c_str() << "/Projects/Android/jni)";
+								s >> "$(call import-module," >> library_dependency.name.c_str() << "/jni)";
 							s << "";
 						}
 						
@@ -613,8 +611,6 @@ namespace chibi
 				fclose(f);
 				f = nullptr;
 			}
-			pop_dir();
-			pop_dir();
 			pop_dir();
 		}
 		
