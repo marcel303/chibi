@@ -389,6 +389,7 @@ namespace chibi
 					s << "  sourceSets {";
 					s << "    main {";
 					s << "      manifest.srcFile 'AndroidManifest.xml'";
+					if (library->isExecutable)
 					s << "      java.srcDirs = ['../../../java']"; // fixme : make unshared by copying files
 					s << "      jniLibs.srcDir 'libs'";
 					s << "      res.srcDirs = ['../../res']";
@@ -512,9 +513,6 @@ namespace chibi
 								if (dep_library->name == library_dependency.name)
 									if (dep_library->shared == true)
 										s >> " " >> dep_library->name.c_str();
-						if (library->isExecutable)
-							s >> " vrapi"; // todo : remove
-						s << "";
 						s << "";
 						
 					// todo : completely separate out prebuilt libraries. there are too many differences
@@ -572,8 +570,6 @@ namespace chibi
 
 						// write library imports
 
-						if (library->isExecutable)
-							s << "$(call import-module,VrApi/Projects/AndroidPrebuilt/jni)"; // todo : remove
 						if (library->library_dependencies.empty() == false)
 						{
 							for (auto & library_dependency : library->library_dependencies)
