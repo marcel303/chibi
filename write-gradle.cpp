@@ -88,7 +88,7 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 		android:allowBackup="false"
 		android:fullBackupContent="false"
 		android:label="${appName}"
-		android:hasCode="true">
+		android:hasCode="false">
 
 		<meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
 
@@ -100,7 +100,7 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
         <!-- note : com.oculus.sdk.GLES3JNIActivity for the Oculus VR native activity -->
         <!-- note : android.app.NativeActivity for the native app glue activity -->
 		<activity
-				android:name="com.oculus.sdk.GLES3JNIActivity"
+				android:name="android.app.NativeActivity"
 				android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
 				android:launchMode="singleTask"
 				android:screenOrientation="landscape"
@@ -342,7 +342,8 @@ namespace chibi
 					s << "";
 					s << "dependencies {";
 					for (auto & library_dependency : library->library_dependencies)
-						s >> "  implementation project(':" >> library_dependency.name.c_str() << "')";
+						if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+							s >> "  implementation project(':" >> library_dependency.name.c_str() << "')";
 					s << "}";
 					s << "";
 					s << "android {";
@@ -447,8 +448,6 @@ namespace chibi
 								printf("silently dropping source file %s, since the NDK build would complain about it not recognizing it", file.filename.c_str());
 						#endif
 						}
-						//if (library->isExecutable)
-						//	s >> " " >> output_path >> "/nativeactivity/file.cpp"; // todo : remove. here to test native activity using the glue library provided by the Android NDK
 						s << "";
 
 						// write header paths
@@ -465,9 +464,12 @@ namespace chibi
 						s << "";
 						
 					// todo : remove these hacky LDLIBS
-					// todo : add LDLIBS from library dependencies
-						if (library->isExecutable)
-							s << "LOCAL_LDLIBS            := -llog -landroid -lGLESv3 -lEGL";
+						s >> "LOCAL_LDLIBS            :=";
+						for (auto & library_dependency : library->library_dependencies)
+							if (library_dependency.type == ChibiLibraryDependency::kType_Global)
+								s >> " -l" >> library_dependency.name.c_str();
+						//	s >> " -llog -landroid"; // todo : remove
+						s << "";
 						s << "";
 
 						// write compile definitions
@@ -497,20 +499,22 @@ namespace chibi
 						
 						s >> "LOCAL_STATIC_LIBRARIES  :=";
 						for (auto & library_dependency : library->library_dependencies)
-							for (auto & dep_library : libraries)
-								if (dep_library->name == library_dependency.name)
-									if (dep_library->shared == false)
-										s >> " " >> dep_library->name.c_str();
+							if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+								for (auto & dep_library : libraries)
+									if (dep_library->name == library_dependency.name)
+										if (dep_library->shared == false)
+											s >> " " >> dep_library->name.c_str();
 						if (library->isExecutable)
 							s >> " android_native_app_glue";
 						s << "";
 
 						s >> "LOCAL_SHARED_LIBRARIES  :=";
 						for (auto & library_dependency : library->library_dependencies)
-							for (auto & dep_library : libraries)
-								if (dep_library->name == library_dependency.name)
-									if (dep_library->shared == true)
-										s >> " " >> dep_library->name.c_str();
+							if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+								for (auto & dep_library : libraries)
+									if (dep_library->name == library_dependency.name)
+										if (dep_library->shared == true)
+											s >> " " >> dep_library->name.c_str();
 						s << "";
 						
 					// todo : completely separate out prebuilt libraries. there are too many differences
@@ -571,7 +575,8 @@ namespace chibi
 						if (library->library_dependencies.empty() == false)
 						{
 							for (auto & library_dependency : library->library_dependencies)
-								s >> "$(call import-module," >> library_dependency.name.c_str() << "/jni)";
+								if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+									s >> "$(call import-module," >> library_dependency.name.c_str() << "/jni)";
 							s << "";
 						}
 						
