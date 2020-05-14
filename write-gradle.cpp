@@ -125,7 +125,7 @@ static const char * s_androidManifestTemplateForLib =
 R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 <manifest
 	xmlns:android="http://schemas.android.com/apk/res/android"
-	package="com.chibi.generated.lib"
+	package="%s"
 	android:versionCode="1"
 	android:versionName="1.0"
 	android:installLocation="auto">
@@ -611,7 +611,7 @@ namespace chibi
 					if (library->isExecutable)
 						fprintf(f, s_androidManifestTemplateForApp, appId.c_str(), libstrip_name(library->name.c_str()));
 					else
-						fprintf(f, "%s", s_androidManifestTemplateForLib);
+						fprintf(f, s_androidManifestTemplateForLib, appId.c_str());
 				}
 				fclose(f);
 				f = nullptr;
