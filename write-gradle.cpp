@@ -1,5 +1,8 @@
 #include "chibi-internal.h"
+#include "filesystem.h"
 #include "stringbuilder.h"
+
+// note : we do not overwrite files when they did not change. Gradle/NDK build will rebuild targets when the build files are newer than the output files
 
 //
 
@@ -29,25 +32,42 @@ static void report_error(const char * line, const char * format, ...)
 	printf("error: %s\n", text);
 }
 
-#include <sys/stat.h>
-#include <unistd.h> // todo : platform compatibility
+#include <sys/stat.h> // mkdir
+#include <unistd.h> // chdir - todo : platform compatibility
 
-static FILE * f = nullptr;
-
-struct S
+struct S : StringBuilder
 {
 	S & operator>>(const char * text)
 	{
-		fprintf(f, "%s", text);
+		Append(text);
 		return *this;
 	}
 	
 	S & operator<<(const char * text)
 	{
-		fprintf(f, "%s\n", text);
+		Append(text);
+		Append('\n');
 		return *this;
 	}
 };
+
+static S s;
+
+static std::string fn;
+
+static void beginFile(const char * filename)
+{
+	fn = filename;
+}
+
+static void endFile()
+{
+	chibi_filesystem::write_if_different(s.text.c_str(), fn.c_str());
+	
+	s.text.clear();
+	
+	fn.clear();
+}
 
 static void push_dir(const char * path)
 {
@@ -143,8 +163,6 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>)MANIFEST";
-
-static S s;
 
 static char id_buffer[256];
 static const char * make_valid_id(const char * id)
@@ -285,7 +303,7 @@ namespace chibi
 		// generate root build.gradle file
 
 		{
-			f = fopen("build.gradle", "wt");
+			beginFile("build.gradle");
 			{
 				s << "buildscript {";
 				s << "  repositories {";
@@ -305,22 +323,20 @@ namespace chibi
 				s << "    }";
 				s << "}";
 			}
-			fclose(f);
-			f = nullptr;
+			endFile();
 		}
 		
 		// generate root settings.gradle file
 
 		{
-			f = fopen("settings.gradle", "wt");
+			beginFile("settings.gradle");
 			{
 				s << "rootProject.name = 'Project'";
 				s << "";
 				for (auto & library : libraries)
 					s >> "include ':" >> library->name.c_str() << "'";
 			}
-			fclose(f);
-			f = nullptr;
+			endFile();
 		}
 
 		for (auto & library : libraries)
@@ -333,7 +349,7 @@ namespace chibi
 			{
 				// generate build.gradle file for each library and app
 
-				f = fopen("build.gradle", "wt");
+				beginFile("build.gradle");
 				{
 					if (library->isExecutable)
 						s << "apply plugin: 'com.android.application'";
@@ -392,7 +408,8 @@ namespace chibi
 					s << "      java.srcDirs = ['../java']"; // fixme : make unshared by copying files
 					s << "      jniLibs.srcDir 'libs'";
 					s << "      res.srcDirs = ['res']";
-					s << "      assets.srcDirs = ['assets']";
+					if (library->resource_path.empty() == false)
+					s >> "      assets.srcDirs = ['" >> library->resource_path.c_str() << "']";
 					s << "    }";
 					s << "  }";
 					s << "";
@@ -403,6 +420,7 @@ namespace chibi
 					s << "      reset()  // Clears the default list from all ABIs to no ABIs.";
 					//s << "      include 'arm64-v8a', 'x86'";
 					s << "      include 'arm64-v8a'";
+					//s << "      include 'x86'";
 					s << "    }";
 					s << "  }";
 					s << "";
@@ -411,14 +429,13 @@ namespace chibi
 					s << "  }";
 					s << "}";
 				}
-				fclose(f);
-				f = nullptr;
+				endFile();
 
 				push_dir("jni");
 				{
 					// generate Android.mk file for each library
 
-					f = fopen("Android.mk", "wt");
+					beginFile("Android.mk");
 					{
 						s << "# auto-generated. do not edit by hand";
 						s << "";
@@ -588,33 +605,30 @@ namespace chibi
 						
 						// todo : write license files
 					}
-					fclose(f);
-					f = nullptr;
+					endFile();
 
 					// generate Application.mk file for each app
 
-					f = fopen("Application.mk", "wt");
+					beginFile("Application.mk");
 					{
 						s >> "NDK_MODULE_PATH := " << output_path;
 						s << "APP_STL         := c++_shared";
 						s << "APP_DEBUG       := true";
 					}
-					fclose(f);
-					f = nullptr;
+					endFile();
 				}
 				pop_dir();
 
 				// generate AndroidManifest.xml for each library
 				
-				f = fopen("AndroidManifest.xml", "wt");
+				beginFile("AndroidManifest.xml");
 				{
 					if (library->isExecutable)
-						fprintf(f, s_androidManifestTemplateForApp, appId.c_str(), libstrip_name(library->name.c_str()));
+						s.AppendFormat(s_androidManifestTemplateForApp, appId.c_str(), libstrip_name(library->name.c_str()));
 					else
-						fprintf(f, s_androidManifestTemplateForLib, appId.c_str());
+						s.AppendFormat(s_androidManifestTemplateForLib, appId.c_str());
 				}
-				fclose(f);
-				f = nullptr;
+				endFile();
 			}
 			pop_dir();
 		}
