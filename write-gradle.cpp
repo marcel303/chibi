@@ -4,9 +4,15 @@
 
 // note : we do not overwrite files when they did not change. Gradle/NDK build will rebuild targets when the build files are newer than the output files
 
+// todo : crunchPngs false
+
 //
 
 #define ENABLE_LOGGING 0 // do not alter
+
+#define NB_CMAKE 1 // use a separately generated CMakeLists.txt for building apps
+#define NB_NDK   2 // use the NDK build system for building apps and libraries
+#define NATIVE_BUILD_TYPE NB_CMAKE
 
 //
 
@@ -107,7 +113,6 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 	<application
 		android:allowBackup="false"
 		android:fullBackupContent="false"
-		android:label="${appName}"
 		android:hasCode="false">
 
 		<meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
@@ -190,9 +195,130 @@ static const char * libstrip_name(const char * name)
 		return name;
 }
 
+#if NATIVE_BUILD_TYPE != NB_CMAKE
+	#include <stack>
+#endif
+
 namespace chibi
 {
-	bool handle_library(const ChibiInfo & chibi_info, ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
+#if NATIVE_BUILD_TYPE != NB_CMAKE
+	static bool gather_all_library_dependencies(const ChibiInfo & chibi_info, const ChibiLibrary & library, std::vector<ChibiLibraryDependency> & library_dependencies)
+	{
+		std::set<std::string> traversed_libraries;
+		std::deque<const ChibiLibrary*> stack;
+		
+		stack.push_back(&library);
+		
+		traversed_libraries.insert(library.name);
+		
+		while (stack.empty() == false)
+		{
+			const ChibiLibrary * library = stack.front();
+			
+			for (auto & library_dependency : library->library_dependencies)
+			{
+				if (traversed_libraries.count(library_dependency.name) == 0)
+				{
+					traversed_libraries.insert(library_dependency.name);
+					
+					library_dependencies.push_back(library_dependency);
+					
+					if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+					{
+						const ChibiLibrary * resolved_library = chibi_info.find_library(library_dependency.name.c_str());
+						
+						if (resolved_library == nullptr)
+						{
+							report_error(nullptr, "failed to resolve library dependency: %s for library %s", library_dependency.name.c_str(), library->name.c_str());
+							return false;
+						}
+
+						stack.push_back(resolved_library);
+					}
+				}
+			}
+			
+			stack.pop_front();
+		}
+		
+		return true;
+	}
+	
+	static bool generate_translation_unit_linkage_files(const ChibiInfo & chibi_info, const char * generated_path, const std::vector<ChibiLibrary*> & libraries)
+	{
+		// generate translation unit linkage files
+
+		for (auto * app : libraries)
+		{
+			if (app->isExecutable == false)
+				continue;
+
+			std::vector<ChibiLibraryDependency> all_library_dependencies;
+			if (!gather_all_library_dependencies(chibi_info, *app, all_library_dependencies))
+				return false;
+
+			std::vector<std::string> link_translation_unit_using_function_calls;
+			
+			for (auto & library_dependency : all_library_dependencies)
+			{
+				if (library_dependency.type != ChibiLibraryDependency::kType_Generated)
+					continue;
+
+				auto * library = chibi_info.find_library(library_dependency.name.c_str());
+
+				link_translation_unit_using_function_calls.insert(
+					link_translation_unit_using_function_calls.end(),
+					library->link_translation_unit_using_function_calls.begin(),
+					library->link_translation_unit_using_function_calls.end());
+			}
+
+			if (link_translation_unit_using_function_calls.empty() == false)
+			{
+				// generate translation unit linkage file
+				
+				StringBuilder sb;
+			
+				sb.Append("// auto-generated. do not hand-edit\n\n");
+
+				for (auto & function_name : link_translation_unit_using_function_calls)
+					sb.AppendFormat("extern void %s();\n", function_name.c_str());
+				sb.Append("\n");
+
+				sb.Append("void linkTranslationUnits()\n");
+				sb.Append("{\n");
+				{
+					for (auto & function_name : link_translation_unit_using_function_calls)
+						sb.AppendFormat("\t%s();\n", function_name.c_str());
+				}
+				sb.Append("}\n");
+
+				char full_path[PATH_MAX];
+				if (!concat(full_path, sizeof(full_path), generated_path, "/translation_unit_linkage-", app->name.c_str(), ".cpp"))
+				{
+					report_error(nullptr, "failed to create absolute path");
+					return false;
+				}
+
+				if (!chibi_filesystem::write_if_different(sb.text.c_str(), full_path))
+				{
+					report_error(nullptr, "failed to write conglomerate file. path: %s", full_path);
+					return false;
+				}
+				
+				// add the translation unit linkage file to the list of app files
+				
+				ChibiLibraryFile file;
+				file.filename = full_path;
+
+				app->files.push_back(file);
+			}
+		}
+
+		return true;
+	}
+#endif
+
+	static bool handle_library(const ChibiInfo & chibi_info, ChibiLibrary & library, std::set<std::string> & traversed_libraries, std::vector<ChibiLibrary*> & libraries)
 	{
 	#if 0
 		if (library.isExecutable)
@@ -294,11 +420,16 @@ namespace chibi
 
 		push_dir(output_path);
 		
+	#if NATIVE_BUILD_TYPE != NB_CMAKE
 		// todo : generate conglomerate files
 
 		// todo : copy header files aliased through copy
 
-		// todo : generate translation unit linkage files
+		// generate translation unit linkage files
+		
+		if (generate_translation_unit_linkage_files(chibi_info, output_path, libraries) == false)
+			return false;
+	#endif
 
 		// generate root build.gradle file
 
@@ -357,18 +488,22 @@ namespace chibi
 						s << "apply plugin: 'com.android.library'";
 					s << "";
 					s << "dependencies {";
+					// note : we need the dependencies for asset merging to work correctly
 					for (auto & library_dependency : library->library_dependencies)
 						if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
 							s >> "  implementation project(':" >> library_dependency.name.c_str() << "')";
 					s << "}";
 					s << "";
 					s << "android {";
+					if (library->isExecutable)
+					{
 					s << "  // This is the name of the generated apk file, which will have";
 					s << "  // -debug.apk or -release.apk appended to it.";
 					s << "  // The filename doesn't effect the Android installation process.";
 					s << "  // Use only letters to remain compatible with the package name.";
 					s >> "  project.archivesBaseName = \"" >> make_valid_id(library->name.c_str()) << "\""; // todo : do we need to fixup archive base name ?
 					s << "  ";
+					}
 					s << "  defaultConfig {";
 					if (library->isExecutable)
 					{
@@ -381,9 +516,9 @@ namespace chibi
 					s << "    targetSdkVersion 25";
 					s << "    compileSdkVersion 26";
 					s << "    ";
-					s >> "    manifestPlaceholders = [appId:\"" >> appId.c_str() >> "\", appName:\"" >> make_valid_id(library->name.c_str()) << "\"]";
-					s << "    ";
-					s << "    ";
+				#if NATIVE_BUILD_TYPE == NB_NDK
+					if (library->isExecutable)
+					{
 					s << "    // override app plugin abiFilters for 64-bit support";
 					s << "    externalNativeBuild {";
 					s << "        ndk {";
@@ -391,46 +526,87 @@ namespace chibi
 					s << "        }";
 					s << "        ndkBuild {";
 					s << "          //abiFilters 'arm64-v8a'";
+					s << "          arguments '-j4'";
 					s << "        }";
 					s << "    }";
+					s << "    ";
+					}
+				#endif
+				#if NATIVE_BUILD_TYPE == NB_CMAKE
+					if (library->isExecutable)
+					{
+					s << "    externalNativeBuild {";
+					s << "        cmake {";
+					s >> "          targets '" >> library->name.c_str() << "'";
+					s << "        }";
+					s << "    }";
+					s << "    ";
+					}
+				#endif
+					//s << "    crunchPngs false";
 					s << "  }";
 					s << "";
+				#if NATIVE_BUILD_TYPE == NB_NDK
 					s << "  externalNativeBuild {";
 					s << "    ndkBuild {";
 					s << "      path 'jni/Android.mk'";
 					s << "    }";
 					s << "  }";
+				#endif
+				#if NATIVE_BUILD_TYPE == NB_CMAKE
+					if (library->isExecutable)
+					{
+					s << "  externalNativeBuild {";
+					s << "    cmake {";
+					s << "      path '../CMakeLists.txt'";
+					s << "    }";
+					s << "  }";
+					}
+				#endif
 					s << "";
 					s << "  sourceSets {";
 					s << "    main {";
 					s << "      manifest.srcFile 'AndroidManifest.xml'";
-					if (library->isExecutable)
-					s << "      java.srcDirs = ['../java']"; // fixme : make unshared by copying files
-					s << "      jniLibs.srcDir 'libs'";
-					s << "      res.srcDirs = ['res']";
+					//if (library->isExecutable)
+					//s << "      java.srcDirs = ['../java']"; // fixme : make unshared by copying files
+					//s << "      jniLibs.srcDir 'libs'";
+					//s << "      res.srcDirs = ['res']";
+				#if NATIVE_BUILD_TYPE == NB_CMAKE
+					s << "      jniLibs.srcDir 'libs' // location of prebuilt .so files to include in the APK";
+					s << "      jni.srcDirs = [] // explicitly disable NDK build";
+      			#endif
 					if (library->resource_path.empty() == false)
 					s >> "      assets.srcDirs = ['" >> library->resource_path.c_str() << "']";
 					s << "    }";
 					s << "  }";
 					s << "";
+					if (library->isExecutable)
+					{
 					s << "  splits {";
-					s << "    abi { // Configures multiple APKs based on ABI.";
-					s << "      enable true // Enables building multiple APKs per ABI.";
-					s << "      universalApk false // Specifies that we do not want to also generate a universal APK that includes all ABIs.";
-					s << "      reset()  // Clears the default list from all ABIs to no ABIs.";
+					s << "    abi { // splits allows us to build separate APKs for each ABI";
+					s << "      enable true // enable splits based on abi";
+					s << "      universalApk false // we do not want to also generate a universal APK that includes all ABIs";
+					s << "      reset() // clear the default list from all ABIs to no ABIs";
+					s << "      // explicitly build for the following ABIs:";
 					//s << "      include 'arm64-v8a', 'x86'";
 					s << "      include 'arm64-v8a'";
 					//s << "      include 'x86'";
 					s << "    }";
 					s << "  }";
-					s << "";
+					s << "  ";
+					}
+					if (true)
+					{
 					s << "  lintOptions{";
 					s << "      disable 'ExpiredTargetSdkVersion'";
 					s << "  }";
+					s << "  ";
+					}
 					s << "}";
 				}
 				endFile();
 
+			#if NATIVE_BUILD_TYPE == NB_NDK
 				push_dir("jni");
 				{
 					// generate Android.mk file for each library
@@ -618,6 +794,7 @@ namespace chibi
 					endFile();
 				}
 				pop_dir();
+			#endif
 
 				// generate AndroidManifest.xml for each library
 				

@@ -984,6 +984,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const char * alias_through_copy = nullptr;
 						
+						bool absolute = false;
+						
 						for (;;)
 						{
 							const char * option;
@@ -1009,6 +1011,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 									return false;
 								}
 							}
+							else if (!strcmp(option, "absolute"))
+							{
+								absolute = true;
+							}
 							else
 							{
 								report_error(line, "unknown option: %s", option);
@@ -1021,7 +1027,15 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						char full_path[PATH_MAX];
 						
-						if (strcmp(path, ".") == 0)
+						if (absolute)
+						{
+							if (!concat(full_path, sizeof(full_path), path))
+							{
+								report_error(line, "failed to create absolute path");
+								return false;
+							}
+						}
+						else if (strcmp(path, ".") == 0)
 						{
 							// the target just wants to include its own base path. use a more simplified full path
 							
@@ -2835,9 +2849,21 @@ struct CMakeWriter
 				
 				sb.AppendFormat("# --- app %s ---\n", app->name.c_str());
 				sb.Append("\n");
-				sb.Append("add_executable(");
-				sb.Append(app->name.c_str());
-				sb.Append("\n\tMACOSX_BUNDLE");
+				
+				if (is_platform("android"))
+				{
+					// note : on android there are no real standalone executable,
+					//        only shared libraries, loaded by a Java-defined activity
+					sb.Append("add_library(");
+					sb.Append(app->name.c_str());
+					sb.Append("\n\tSHARED");
+				}
+				else
+				{
+					sb.Append("add_executable(");
+					sb.Append(app->name.c_str());
+					sb.Append("\n\tMACOSX_BUNDLE");
+				}
 				
 				for (auto & file : app->files)
 				{
@@ -3371,27 +3397,31 @@ bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst
 	
 	printf("found %d libraries and apps in total\n", (int)chibi_info.libraries.size());
 
-	//
+	// write cmake file
+	
+	char output_filename[PATH_MAX];
+	
+	if (!concat(output_filename, sizeof(output_filename), dst_path, "/", "CMakeLists.txt"))
+	{
+		report_error(nullptr, "failed to create absolute path");
+		return false;
+	}
+	
+	CMakeWriter writer;
+	
+	if (!writer.write(chibi_info, output_filename))
+	{
+		report_error(nullptr, "an error occured while generating cmake file");
+		return false;
+	}
+
+	// write gradle files
 	
 	if (is_platform("android"))
 	{
-		write_gradle_files(chibi_info, dst_path);
-	}
-	else
-	{
-		char output_filename[PATH_MAX];
-		
-		if (!concat(output_filename, sizeof(output_filename), dst_path, "/", "CMakeLists.txt"))
+		if (!write_gradle_files(chibi_info, dst_path))
 		{
-			report_error(nullptr, "failed to create absolute path");
-			return false;
-		}
-		
-		CMakeWriter writer;
-		
-		if (!writer.write(chibi_info, output_filename))
-		{
-			report_error(nullptr, "an error occured while generating cmake file");
+			report_error(nullptr, "an error occured while generating gradle files");
 			return false;
 		}
 	}
