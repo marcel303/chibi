@@ -1,6 +1,8 @@
 #include "chibi-internal.h"
 #include "filesystem.h"
 #include "stringbuilder.h"
+#include <algorithm>
+#include <stdarg.h>
 
 // note : we do not overwrite files when they did not change. Gradle/NDK build will rebuild targets when the build files are newer than the output files
 
@@ -102,6 +104,10 @@ R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
 
 	<!-- Tell the system this app works in either 3dof or 6dof mode -->
 	<uses-feature android:name="android.hardware.vr.headtracking" android:required="false" />
+
+	<!-- Tell the system this app can handle tracked remotes and hands -->
+	<uses-feature android:name="oculus.software.handtracking" android:required="false" />
+	<uses-permission android:name="oculus.permission.handtracking" />
 
 	<!-- Network access needed for OVRMonitor -->
 	<uses-permission android:name="android.permission.INTERNET" />
