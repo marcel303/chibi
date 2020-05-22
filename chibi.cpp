@@ -3273,7 +3273,15 @@ bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool s
 	
 	if (platform != nullptr)
 	{
-		s_platform = platform;
+		const char * separator = strchr(platform, '.');
+		
+		if (separator == nullptr)
+			s_platform = platform;
+		else
+		{
+			s_platform = std::string(platform).substr(0, separator - platform);
+			s_platform_full = platform;
+		}
 	}
 	else
 	{
