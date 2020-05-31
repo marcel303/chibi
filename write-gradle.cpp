@@ -181,7 +181,7 @@ static const char * make_valid_id(const char * id)
 	int i = 0;
 	while (id[i] != 0)
 	{
-		if (id[i] == '-')
+		if (id[i] == '-' || id[i] == '.')
 			id_buffer[i] = '_';
 		else
 			id_buffer[i] = id[i];
