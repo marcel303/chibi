@@ -87,7 +87,11 @@ static void push_dir(const char * path)
 {
 // todo : error checks
 
+#ifdef WIN32
+	mkdir(path);
+#else
 	mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+#endif
 	chdir(path);
 }
 
