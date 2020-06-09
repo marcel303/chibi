@@ -4,6 +4,15 @@
 #include <algorithm>
 #include <stdarg.h>
 
+#ifdef WIN32
+	#include <direct.h> // _mkdir, _chdir
+	#define chdir _chdir
+	#define mkdir _mkdir
+#else
+	#include <sys/stat.h> // mkdir
+	#include <unistd.h> // chdir - todo : platform compatibility
+#endif
+
 // note : we do not overwrite files when they did not change. Gradle/NDK build will rebuild targets when the build files are newer than the output files
 
 // todo : crunchPngs false
@@ -39,9 +48,6 @@ static void report_error(const char * line, const char * format, ...)
 	
 	printf("error: %s\n", text);
 }
-
-#include <sys/stat.h> // mkdir
-#include <unistd.h> // chdir - todo : platform compatibility
 
 struct S : StringBuilder
 {
