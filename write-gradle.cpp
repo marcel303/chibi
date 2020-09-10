@@ -16,8 +16,6 @@
 
 // note : we do not overwrite files when they did not change. Gradle/NDK build will rebuild targets when the build files are newer than the output files
 
-// todo : crunchPngs false
-
 //
 
 #define ENABLE_LOGGING 0 // do not alter
@@ -530,6 +528,54 @@ namespace chibi
 
 				beginFile("build.gradle");
 				{
+					// disable lint because it's sloooow. this needs to be before 'apply plugin'
+					// disabling lint commonly reduces the build time by more than 50%
+					s << "tasks.whenTaskAdded { task ->";
+    				s << "  if (task.name.equals('lint')) {";
+        			s << "    task.enabled = false";
+    				s << "  }";
+
+					const char * disabledTasks[] =
+					{
+						"generate%sUnitTestSources",
+						"pre%sUnitTestBuild",
+						"javaPreCompile%sUnitTest",
+						"compile%sUnitTestJavaWithJavac",
+						"process%sUnitTestJavaRes",
+						"test%sUnitTest",
+						"test",
+						"check",
+						"lint",
+						//"transformResourcesWithMergeJavaResFor%s",
+						//"process%sJavaRes",
+						//"check%sLibraries",
+						"compile%sShaders",
+						"merge%sShaders",
+						//"compile%sSources",
+						"prepareLintJar",
+						"compile%sRenderscript",
+						//"transformClassesAndResourcesWithSyncLibJarsFor%s",
+						//"transformNativeLibsWithStripDebugSymbolFor%s",
+						//"transformNativeLibsWithMergeJniLibsFor%s",
+						//"extract%sAnnotations",
+						//"generate%sResValues",
+						"compile%sNdk",
+						""
+					};
+
+					for (int i = 0; disabledTasks[i][0] != 0; ++i)
+					{
+						for (int c = 0; configs[c][0] != 0; ++c)
+						{
+							char taskName[64];
+							sprintf_s(taskName, sizeof(taskName), disabledTasks[i], configs[c]);
+							s >> "  if (task.name.equals('" >> taskName << "')) { task.enabled = false }";
+						}
+					}
+
+					s << "}";
+					s << "";
+
 					if (library->isExecutable)
 						s << "apply plugin: 'com.android.application'";
 					else
@@ -580,6 +626,11 @@ namespace chibi
 					s << "    ";
 					}
 				#endif
+					s << "    aaptOptions {";
+					s << "      noCompress 'cache'";    // turn off asset compression for .cache files
+					s << "      cruncherEnabled false"; // disable png crunching
+    				s << "    }";
+    				s << "    ";
 				#if NATIVE_BUILD_TYPE == NB_CMAKE
 					if (library->isExecutable)
 					{
@@ -591,7 +642,6 @@ namespace chibi
 					s << "    ";
 					}
 				#endif
-					//s << "    crunchPngs false";
 					s << "  }";
 					s << "";
 				#if NATIVE_BUILD_TYPE == NB_NDK
