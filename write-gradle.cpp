@@ -2,6 +2,7 @@
 #include "filesystem.h"
 #include "stringbuilder.h"
 #include <algorithm>
+#include <errno.h>
 #include <stdarg.h>
 
 #ifdef WIN32
@@ -10,7 +11,7 @@
 	#define mkdir _mkdir
 #else
 	#include <sys/stat.h> // mkdir
-	#include <unistd.h> // chdir - todo : platform compatibility
+	#include <unistd.h> // chdir
 #endif
 
 // note : we do not overwrite files when they did not change. Gradle/NDK build will rebuild targets when the build files are newer than the output files
@@ -74,30 +75,57 @@ static void beginFile(const char * filename)
 	fn = filename;
 }
 
-static void endFile()
+static bool endFile()
 {
-	chibi_filesystem::write_if_different(s.text.c_str(), fn.c_str());
+	bool result = true;
+
+	if (!chibi_filesystem::write_if_different(s.text.c_str(), fn.c_str()))
+	{
+		report_error(nullptr, "failed to write file contents");
+		result = false;
+	}
 	
 	s.text.clear();
 	
 	fn.clear();
+
+	return result;
 }
 
-static void push_dir(const char * path)
+static bool push_dir(const char * path)
 {
-// todo : error checks
-
 #ifdef WIN32
-	mkdir(path);
+	if (mkdir(path) != 0 && errno != EEXIST)
+	{
+		report_error(nullptr, "failed to create directory");
+		return false;
+	}
 #else
-	mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	if (mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 && errno != EEXIST)
+	{
+		report_error(nullptr, "failed to create directory");
+		return false;
+	}
 #endif
-	chdir(path);
+	
+	if (chdir(path) != 0)
+	{
+		report_error(nullptr, "failed to change directory");
+		return false;
+	}
+
+	return true;
 }
 
-static void pop_dir()
+static bool pop_dir()
 {
-	chdir("..");
+	if (chdir("..") != 0)
+	{
+		report_error(nullptr, "failed to change directory");
+		return false;
+	}
+
+	return true;
 }
 
 static const char * s_androidManifestTemplateForApp =
@@ -434,7 +462,8 @@ namespace chibi
 				});
 		}
 
-		push_dir(output_path);
+		if (!push_dir(output_path))
+			return false;
 		
 	#if NATIVE_BUILD_TYPE != NB_CMAKE
 		// todo : generate conglomerate files
@@ -470,7 +499,8 @@ namespace chibi
 				s << "    }";
 				s << "}";
 			}
-			endFile();
+			if (!endFile())
+				return false;
 		}
 		
 		// generate root settings.gradle file
@@ -483,7 +513,8 @@ namespace chibi
 				for (auto & library : libraries)
 					s >> "include ':" >> library->name.c_str() << "'";
 			}
-			endFile();
+			if (!endFile())
+				return false;
 		}
 
 		for (auto & library : libraries)
@@ -492,7 +523,8 @@ namespace chibi
 		// todo : add chibi option to set Android manifest file. if not set, auto-generate one
 			std::string appId = std::string("com.chibi.generated.lib.") + make_valid_id(library->name.c_str());
 
-			push_dir(library->name.c_str());
+			if (!push_dir(library->name.c_str()))
+				return false;
 			{
 				// generate build.gradle file for each library and app
 
@@ -620,10 +652,12 @@ namespace chibi
 					}
 					s << "}";
 				}
-				endFile();
+				if (!endFile())
+					return false;
 
 			#if NATIVE_BUILD_TYPE == NB_NDK
-				push_dir("jni");
+				if (!push_dir("jni"))
+					return false;
 				{
 					// generate Android.mk file for each library
 
@@ -797,7 +831,8 @@ namespace chibi
 						
 						// todo : write license files
 					}
-					endFile();
+					if (!endFile())
+						return false;
 
 					// generate Application.mk file for each app
 
@@ -807,9 +842,11 @@ namespace chibi
 						s << "APP_STL         := c++_shared";
 						s << "APP_DEBUG       := true";
 					}
-					endFile();
+					if (!endFile())
+						return false;
 				}
-				pop_dir();
+				if (!pop_dir())
+					return false;
 			#endif
 
 				// generate AndroidManifest.xml for each library
@@ -821,12 +858,15 @@ namespace chibi
 					else
 						s.AppendFormat(s_androidManifestTemplateForLib, appId.c_str());
 				}
-				endFile();
+				if (!endFile())
+					return false;
 			}
-			pop_dir();
+			if (!pop_dir())
+				return false;
 		}
 		
-		pop_dir();
+		if (!pop_dir())
+			return false;
 
 		return true;
 	}
