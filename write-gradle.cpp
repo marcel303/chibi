@@ -563,6 +563,13 @@ namespace chibi
 						""
 					};
 
+					const char * configs[] =
+					{
+						"Debug",
+						"Release",
+						""
+					};
+
 					for (int i = 0; disabledTasks[i][0] != 0; ++i)
 					{
 						for (int c = 0; configs[c][0] != 0; ++c)
