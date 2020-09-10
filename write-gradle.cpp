@@ -607,6 +607,7 @@ namespace chibi
 					s << "  externalNativeBuild {";
 					s << "    cmake {";
 					s << "      path '../CMakeLists.txt'";
+					s << "      buildStagingDirectory '../cmake-build'";
 					s << "    }";
 					s << "  }";
 					}
@@ -639,6 +640,9 @@ namespace chibi
 					//s << "      include 'arm64-v8a', 'x86'";
 					s << "      include 'arm64-v8a'";
 					//s << "      include 'x86'";
+					s << "    }";
+					s << "    density {";
+					s << "      enable false";
 					s << "    }";
 					s << "  }";
 					s << "  ";
