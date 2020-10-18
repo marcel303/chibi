@@ -236,8 +236,15 @@ namespace chibi
 			{
 				if (text[0] != wildcard[0])
 				{
-					while (wildcard[0] != 0 && wildcard[0] != ';')
+					if (wildcard[0] != ';')
+						return false;
+					else
+					{
 						wildcard++;
+						
+						while (wildcard[0] != 0 && wildcard[0] != ';')
+							wildcard++;
+					}
 				}
 				else
 				{
