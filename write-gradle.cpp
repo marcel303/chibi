@@ -710,12 +710,10 @@ namespace chibi
 								s >> " " >> header_path.path.c_str();
 						s << "";
 						
-					// todo : remove these hacky LDLIBS
 						s >> "LOCAL_LDLIBS            :=";
 						for (auto & library_dependency : library->library_dependencies)
 							if (library_dependency.type == ChibiLibraryDependency::kType_Global)
 								s >> " -l" >> library_dependency.name.c_str();
-						//	s >> " -llog -landroid"; // todo : remove
 						s << "";
 						s << "";
 
