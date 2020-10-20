@@ -752,7 +752,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							{
 								if (is_wildcard)
 								{
-									if (match_wildcard(filename.c_str(), extension) == false)
+									if (match_wildcard(filename.c_str(), extension, ';') == false)
 										return true;
 								}
 								else

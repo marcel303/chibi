@@ -206,20 +206,23 @@ namespace chibi
 		return true;
 	}
 
-	static bool match_wildcard(const char * in_text, const char * wildcard)
+	static bool match_wildcard(const char * in_text, const char * wildcard, const char separator)
 	{
 		const char * text = in_text;
 		
 		while (wildcard[0] != 0)
 		{
-			if (wildcard[0] == ';')
+			if (wildcard[0] == separator)
 			{
+				if (text[0] == 0)
+					return true;
+
 				text = in_text;
 				wildcard++;
 			}
 			else if (wildcard[0] == '*')
 			{
-				if (wildcard[1] == 0 || wildcard[1] == ';')
+				if (wildcard[1] == 0 || wildcard[1] == separator)
 					return true;
 				else
 				{
@@ -236,13 +239,13 @@ namespace chibi
 			{
 				if (text[0] != wildcard[0])
 				{
-					if (wildcard[0] != ';')
+					if (wildcard[0] != separator)
 						return false;
 					else
 					{
 						wildcard++;
 						
-						while (wildcard[0] != 0 && wildcard[0] != ';')
+						while (wildcard[0] != 0 && wildcard[0] != separator)
 							wildcard++;
 					}
 				}

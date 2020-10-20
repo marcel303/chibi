@@ -171,7 +171,7 @@ struct ChibiInfo
 		else
 		{
 			for (auto & build_target : build_targets)
-				if (match_wildcard(name, build_target.c_str()))
+				if (match_wildcard(name, build_target.c_str(), ';'))
 					return true;
 		}
 		
