@@ -185,9 +185,9 @@ static std::string s_platform_full;
 
 static bool is_platform(const char * platform)
 {
-	if (s_platform == platform)
+	if (match_element(s_platform.c_str(), platform, '|'))
 		return true;
-	else if (s_platform_full.empty() == false && s_platform_full == platform)
+	else if (s_platform_full.empty() == false && match_element(s_platform_full.c_str(), platform, '|'))
 		return true;
 	else
 		return false;
@@ -210,7 +210,7 @@ void show_chibi_syntax()
 	show_syntax_elem("app <app_name>", "adds an app target with the given name");
 	show_syntax_elem("cmake_module_path <path>", "adds a cmake module path");
 	show_syntax_elem("library <library_name> [shared]", "adds a library target with the given name");
-	show_syntax_elem("with_platform <platform_name>", "with_platform may be specified in front of every line. when set, lines are filtered based on whether the current platform name matched the given platform name");
+	show_syntax_elem("with_platform <platform_name>[|<platform_name>..]", "with_platform may be specified in front of every line. when set, lines are filtered based on whether the current platform name matched the given platform name");
 	
 	printf("\n");
 	printf("chibi syntax (within app or library context):\n");

@@ -214,9 +214,11 @@ namespace chibi
 		{
 			if (wildcard[0] == separator)
 			{
+				// did we match the entire element? match
 				if (text[0] == 0)
 					return true;
 
+				// restart matching against the next element
 				text = in_text;
 				wildcard++;
 			}
@@ -235,25 +237,62 @@ namespace chibi
 					wildcard++;
 				}
 			}
+			else if (text[0] != wildcard[0])
+			{
+				// seek to the next element
+				while (wildcard[0] != 0 && wildcard[0] != separator)
+					wildcard++;
+				
+				// no more elements? no match
+				if (wildcard[0] == 0)
+					return false;
+				
+				// we found the next element. restart matching
+				in_text = text;
+				wildcard++;
+			}
 			else
 			{
-				if (text[0] != wildcard[0])
-				{
-					if (wildcard[0] != separator)
-						return false;
-					else
-					{
-						wildcard++;
-						
-						while (wildcard[0] != 0 && wildcard[0] != separator)
-							wildcard++;
-					}
-				}
-				else
-				{
-					text++;
-					wildcard++;
-				}
+				text++;
+				wildcard++;
+			}
+		}
+		
+		return text[0] == 0;
+	}
+	
+	static bool match_element(const char * in_text, const char * element, const char separator)
+	{
+		const char * text = in_text;
+		
+		while (element[0] != 0)
+		{
+			if (element[0] == separator)
+			{
+				if (text[0] == 0)
+					return true;
+
+				text = in_text;
+				element++;
+			}
+			else if (text[0] != element[0])
+			{
+				// seek to the next element
+				while (element[0] != 0 && element[0] != separator)
+					element++;
+				
+				// no more elements? no match
+				if (element[0] == 0)
+					return false;
+				
+				// we found the next element. restart matching
+				in_text = text;
+				element++;
+			}
+			else
+			{
+				text++;
+				element++;
 			}
 		}
 		
