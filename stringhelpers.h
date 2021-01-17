@@ -8,7 +8,7 @@ namespace chibi
 {
 	static bool is_whitespace(const char c)
 	{
-		return isspace(c);
+		return isspace(c) != 0;
 	}
 
 	static bool is_comment_or_whitespace(const char * line)

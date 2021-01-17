@@ -1,5 +1,6 @@
 #include "base64.h"
 #include <assert.h>
+#include <stdint.h>
 
 namespace chibi
 {
