@@ -169,9 +169,13 @@ static void report_error(const char * line, const char * format, ...)
 static bool is_absolute_path(const char * path)
 {
 #if MACOS || LINUX
+	// detect absolute Unix-style path
 	return path[0] == '/';
 #else
-	// todo : detect absolute Windows path
+	// detect absolute Windows path
+	for (int i = 0; path[i] != 0; ++i)
+		if (path[i] == ':')
+			return true;
 	return false;
 #endif
 }
