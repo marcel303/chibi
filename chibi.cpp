@@ -2959,7 +2959,7 @@ struct CMakeWriter
 							if (s_platform == "macos")
 								resource_path = "${BUNDLE_PATH}/Contents/Resources/libs";
 							else if (s_platform == "iphoneos")
-								resource_path = "${BUNDLE_PATH}";
+								resource_path = "${BUNDLE_PATH}/libs";
 							else
 								continue; // todo : add windows and linux here
 							
@@ -2988,9 +2988,9 @@ struct CMakeWriter
 							const char * license_path = nullptr;
 							
 							if (s_platform == "macos")
-								license_path = "${BUNDLE_PATH}/Contents/License";
+								license_path = "${BUNDLE_PATH}/Contents/license";
 							else if (s_platform == "iphoneos")
-								license_path = "${BUNDLE_PATH}";
+								license_path = "${BUNDLE_PATH}/license";
 							else
 								continue; // todo : add windows and linux here
 							
