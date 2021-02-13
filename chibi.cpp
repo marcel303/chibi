@@ -2299,10 +2299,14 @@ struct CMakeWriter
 		
 		return true;
 	}
-
-// todo : check if IOS bundle path is appropriate for OSX too. TARGET_FILE_DIR would be better than trying to guess the path if it actually works
+	
 	static void write_set_osx_bundle_path(StringBuilder & sb, const char * app_name)
 	{
+	#if 1
+		// note : the TARGET_FILE_DIR approach replaces the older but known working method of trying to manually
+		//        pasting together the app bundle pathh. if this method works successfully the old method may be removed
+		sb.AppendFormat("\tset(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>/../..\")\n", app_name);
+	#else
 		// mysterious code snippet to fetch GENERATOR_IS_MULTI_CONFIG.
 		// why can't I just use GENERATOR_IS_MULTI_CONFIG directly inside the if statement...
 		sb.AppendFormat("get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)\n");
@@ -2317,6 +2321,7 @@ struct CMakeWriter
 		sb.AppendFormat("else ()\n");
 		sb.AppendFormat("\tset(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/%s.app\")\n", app_name);
 		sb.AppendFormat("endif ()\n");
+	#endif
 	}
 
 	static void write_set_ios_bundle_path(StringBuilder & sb, const char * app_name)
