@@ -89,6 +89,8 @@ struct ChibiLibrary
 	bool shared = false; // generate a shared library
 	bool prebuilt = false; // library contains prebuilt files instead of source files
 	
+	bool objc_arc = false; // enable objective-c's automatic reference counting feature
+	
 	bool isExecutable = false;
 	
 	std::vector<ChibiLibraryFile> files;

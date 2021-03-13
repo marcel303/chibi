@@ -1,6 +1,6 @@
 library libchibi
 	add_files base64.cpp base64.h
-	add_files chibi.cpp chibi.h
+	add_files chibi.cpp chibi.h chibi-internal.h
 	add_files filesystem.cpp filesystem.h
 	add_files plistgenerator.cpp plistgenerator.h
 	add_files stringbuilder.cpp stringbuilder.h

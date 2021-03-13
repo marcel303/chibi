@@ -221,7 +221,7 @@ void show_chibi_syntax()
 	show_syntax_elem("add_dist_files <file>..", "adds one or more files to to be bundled with the application, when the build type is set to distribution");
 	show_syntax_elem("add_files <file>.. [- [conglomerate <conglomerate_file>]]", "adds one or more files to compile. the list of files may optionally be terminated by '-', after which further options may be specified");
 	show_syntax_elem("compile_definition <name> <value> [expose]", "adds a compile definition. when <value> is set to *, the compile definition is merely defined, without a value. when <expose> is set, the compile_definition is visible to all targets that depends on the current target");
-	show_syntax_elem("depend_library <library_name> [local | find]", "adds a target dependency. <library_name> may refer to a chibi library target, or to a pre-built library or system library. when [local] is set, the file is interpreted as a pre-built library to be found at the given location, relative to the current chibi file. when [find] is set, the library will be searched for on the system");
+	show_syntax_elem("depend_library <library_name> [local | global | find]", "adds a target dependency. <library_name> may refer to a chibi library target, or to a pre-built library or system library. when [local] is set, the file is interpreted as a pre-built library to be found at the given location, relative to the current chibi file. When [global] is set, the system-global library is used. When [find] is set, the library will be searched for on the system");
 	show_syntax_elem("depend_package <package_name>", "depends on a package, to be found using one of cmake's find_package scripts. <package_name> defines the name of the cmake package script");
 	show_syntax_elem("exclude_files <file>..", "exclude one or more files added before using add_files or scan_files");
 	show_syntax_elem("group <group_name>", "specify the group for files to be added subsequently using add_files or scan_files");
@@ -398,6 +398,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 					const char * name;
 					bool shared = false;
 					bool prebuilt = false;
+					bool objc_arc = false;
 					
 					if (!eat_word_v2(linePtr, name))
 					{
@@ -416,6 +417,8 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 							shared = true;
 						else if (!strcmp(option, "prebuilt"))
 							prebuilt = true;
+						else if (!strcmp(option, "objc-arc"))
+							objc_arc = true;
 						else
 						{
 							report_error(line, "unknown option: %s", option);
@@ -440,6 +443,7 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 					
 					library->shared = shared;
 					library->prebuilt = prebuilt;
+					library->objc_arc = objc_arc;
 					
 					chibi_info.libraries.push_back(library);
 					
@@ -2610,7 +2614,7 @@ struct CMakeWriter
 				sb.Append("\n");
 				
 				// some find_package scripts depend on pkg-config
-				sb.Append("if (UNIX)\n"); // todo
+				sb.Append("if (UNIX)\n");
 				sb.Append("\tfind_package(PkgConfig REQUIRED)\n");
 				sb.Append("\tif (NOT PkgConfig_FOUND)\n");
 				sb.Append("\t\tmessage(FATAL_ERROR \"PkgConfig not found\")\n");
@@ -2845,6 +2849,15 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
+				if (library->objc_arc)
+				{
+					// note : we only support enabling ARC for Apple platforms right now
+					if (s_platform == "macos" || s_platform == "iphoneos")
+					{
+						sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY COMPILE_FLAGS \" -fobjc-arc\")", library->name.c_str());
+					}
+				}
+				
 				if (!output(f, sb))
 					return false;
 			}
@@ -3043,9 +3056,15 @@ struct CMakeWriter
 					sb.Append("\n");
 				}
 				
-			// todo : add AppleInfo.plist file to chibi repository or auto-generate it
-			// todo : put generated plist file into the output location
-			#if 1
+				if (app->objc_arc)
+				{
+					// note : we only support enabling ARC for Apple platforms right now
+					if (s_platform == "macos" || s_platform == "iphoneos")
+					{
+						sb.AppendFormat("set_property(TARGET %s APPEND_STRING PROPERTY COMPILE_FLAGS \" -fobjc-arc\")", app->name.c_str());
+					}
+				}
+				
 				if (s_platform == "macos" || s_platform == "iphoneos")
 				{
 					// generate plist text
