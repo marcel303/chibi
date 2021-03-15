@@ -1597,7 +1597,7 @@ struct CMakeWriter
 		}
 
 		// rsync
-		sb.AppendFormat("set(args rsync -r %s \"%s/\" \"%s\")\n",
+		sb.AppendFormat("set(args rsync -r --links %s \"%s/\" \"%s\")\n",
 				exclude_args.c_str(),
 				library.resource_path.c_str(),
 				destination_path);
@@ -2019,7 +2019,7 @@ struct CMakeWriter
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND rsync -r \"%s\" \"${BUNDLE_PATH}/Contents/Frameworks\"\n" \
+								"\tCOMMAND rsync -r --links \"%s\" \"${BUNDLE_PATH}/Contents/Frameworks\"\n" \
 								"\tDEPENDS \"%s\")\n",
 							app.name.c_str(),
 							library_dependency.path.c_str(),
