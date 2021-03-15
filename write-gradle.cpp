@@ -631,21 +631,30 @@ namespace chibi
 					s << "";
 					if (library->isExecutable)
 					{
+					// splits
 					s << "  splits {";
 					s << "    abi { // splits allows us to build separate APKs for each ABI";
 					s << "      enable true // enable splits based on abi";
 					s << "      universalApk false // we do not want to also generate a universal APK that includes all ABIs";
 					s << "      reset() // clear the default list from all ABIs to no ABIs";
 					s << "      // explicitly build for the following ABIs:";
-					//s << "      include 'arm64-v8a', 'x86'";
+					if (true) // is_platform("android.ovr-mobile")
 					s << "      include 'arm64-v8a'";
-					//s << "      include 'x86'";
+					else
+					s << "      include 'arm64-v8a', 'x86'";
 					s << "    }";
 					s << "    density {";
 					s << "      enable false";
 					s << "    }";
 					s << "  }";
 					s << "  ";
+					// signing config
+					s << "  buildTypes {";
+					s << "    release {";
+					s << "      // sign with debug keys, so release builds can be run";
+					s << "      signingConfig signingConfigs.debug";
+					s << "    }";
+					s << "  }";
 					}
 					if (true)
 					{
