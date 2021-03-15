@@ -2566,7 +2566,7 @@ struct CMakeWriter
 		
 		// always build a self-contained archive for iphoneos, as any build type
 		// could be deployed on an actual device, and the app won't have access
-		// to the local filesystem for loading resources and librairies
+		// to the local filesystem for loading resources and libraries
 		if (s_platform == "iphoneos")
 		{
 			dont_makearchive_conditional_begin = "$<$<BOOL:false>:";
@@ -2684,7 +2684,6 @@ struct CMakeWriter
 					sb.Append("add_compile_options(-mavx2)\n");
 				}
 				
-			// fixme : this should be defined through the user's workspace
 				if (s_platform == "windows")
 				{
 					// Windows.h defines min and max macros, which are always causing issues in portable code
