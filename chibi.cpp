@@ -187,6 +187,12 @@ static ChibiLibrary * s_currentLibrary = nullptr;
 static std::string s_platform;
 static std::string s_platform_full;
 
+static std::string dont_makearchive_conditional_begin;
+static std::string dont_makearchive_conditional_end;
+
+static std::string makearchive_conditional_begin;
+static std::string makearchive_conditional_end;
+
 static bool is_platform(const char * platform)
 {
 	if (match_element(s_platform.c_str(), platform, '|'))
@@ -1507,9 +1513,11 @@ struct CMakeWriter
 				resource_paths.text.c_str(),
 				resource_paths.text.size());
 
-			sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATHS=\"%s\">)\n",
+			sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATHS=\"%s\"%s)\n",
 				app.name.c_str(),
-				resource_paths_base64.c_str());
+				dont_makearchive_conditional_begin.c_str(),
+				resource_paths_base64.c_str(),
+				dont_makearchive_conditional_end.c_str());
 			sb.Append("\n");
 		}
 		
@@ -1550,9 +1558,11 @@ struct CMakeWriter
 				resource_paths.text.c_str(),
 				resource_paths.text.size());
 
-			sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<CONFIG:Distribution>:CHIBI_RESOURCE_PATHS=\"%s\">)\n",
+			sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATHS=\"%s\"%s)\n",
 				app.name.c_str(),
-				resource_paths_base64.c_str());
+				makearchive_conditional_begin.c_str(),
+				resource_paths_base64.c_str(),
+				makearchive_conditional_end.c_str());
 			sb.Append("\n");
 		}
 		
@@ -1566,22 +1576,22 @@ struct CMakeWriter
 
 		// but first make sure the target directory exists
 
-		// note : we use a conditional to check if we're building a deployment app bundle
+		// note : we use a conditional to check if we're building a distribution app bundle
 		//        ideally CMake would have build config dependent custom commands,
-		//        this is really just a workaround/hack for missing behavior
-
-		const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
+		//        but since it doesn't, we prepend 'echo' to the command, depending on
+		//        whether this is a distribution build or not
 
 		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"%s\")\n",
 			destination_path);
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 				"\tCOMMAND_EXPAND_LISTS\n" \
 				"\tDEPENDS \"%s\")\n",
 			app.name.c_str(),
-			conditional,
+			dont_makearchive_conditional_begin.c_str(),
+			dont_makearchive_conditional_end.c_str(),
 			library.resource_path.c_str());
 
 		std::string exclude_args;
@@ -1604,11 +1614,12 @@ struct CMakeWriter
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 				"\tCOMMAND_EXPAND_LISTS\n" \
 				"\tDEPENDS \"%s\")\n",
 			app.name.c_str(),
-			conditional,
+			dont_makearchive_conditional_begin.c_str(),
+			dont_makearchive_conditional_end.c_str(),
 			library.resource_path.c_str());
 		sb.Append("\n");
 		
@@ -1628,21 +1639,21 @@ struct CMakeWriter
 
 		// but first make sure the target directory exists
 
-		// note : we use a conditional to check if we're building a deployment app bundle
+		// note : we use a conditional to check if we're building a distribution app bundle
 		//        ideally CMake would have build config dependent custom commands,
-		//        this is really just a workaround/hack for missing behavior
+		//        but since it doesn't, we prepend 'echo' to the command, depending on
+		//        whether this is a distribution build or not
 		
-		const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
-
 		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"%s\")\n",
 			destination_path);
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 				"\tCOMMAND_EXPAND_LISTS)\n",
 			app.name.c_str(),
-			conditional);
+			dont_makearchive_conditional_begin.c_str(),
+			dont_makearchive_conditional_end.c_str());
 		
 		StringBuilder sources;
 		for (auto & license_file : library.license_files)
@@ -1666,10 +1677,11 @@ struct CMakeWriter
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 				"\tCOMMAND_EXPAND_LISTS)\n",
 			app.name.c_str(),
-			conditional);
+			dont_makearchive_conditional_begin.c_str(),
+			dont_makearchive_conditional_end.c_str());
 		sb.Append("\n");
 	
 		return true;
@@ -2007,6 +2019,7 @@ struct CMakeWriter
 						
 						// but first make sure the target directory exists
 						
+					// todo : should only copy frameworks when distribution build
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
@@ -2015,6 +2028,7 @@ struct CMakeWriter
 							app.name.c_str(),
 							library_dependency.path.c_str());
 						
+					// todo : should only copy frameworks when distribution build
 						// rsync
 						sb.AppendFormat(
 							"add_custom_command(\n" \
@@ -2029,6 +2043,7 @@ struct CMakeWriter
 					{
 						// just copy the file (if it has changed or doesn't exist)
 						
+					// todo : should only copy library files when distribution build
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
@@ -2112,6 +2127,8 @@ struct CMakeWriter
 					
 					if (s_platform == "macos")
 					{
+					// todo : should only copy frameworks when distribution build
+					// todo : %secho%s trick doesn't works unless we also use the COMMAND_EXPAND_LISTS option
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
@@ -2145,8 +2162,6 @@ struct CMakeWriter
 
 	static bool write_create_windows_app_archive(const ChibiInfo & chibi_info, StringBuilder & sb, const ChibiLibrary & app, const std::vector<ChibiLibraryDependency> & library_dependencies)
 	{
-		const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
-		
 		// create a directory where to copy the executable, distribution and data files
 		
 		sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${CMAKE_CURRENT_BINARY_DIR}/%s\")\n",
@@ -2154,10 +2169,11 @@ struct CMakeWriter
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 				"\tCOMMAND_EXPAND_LISTS)\n",
 				app.name.c_str(),
-				conditional);
+				dont_makearchive_conditional_begin.c_str(),
+				dont_makearchive_conditional_end.c_str());
 
 		// copy the generated executable
 
@@ -2167,10 +2183,11 @@ struct CMakeWriter
 		sb.AppendFormat(
 			"add_custom_command(\n" \
 				"\tTARGET %s POST_BUILD\n" \
-				"\tCOMMAND %s \"$<1:${args}>\"\n" \
+				"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 				"\tCOMMAND_EXPAND_LISTS)\n",
 			app.name.c_str(),
-			conditional);
+			dont_makearchive_conditional_begin.c_str(),
+			dont_makearchive_conditional_end.c_str());
 
 		for (auto & library_dependency : library_dependencies)
 		{
@@ -2188,11 +2205,12 @@ struct CMakeWriter
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 							"\tCOMMAND_EXPAND_LISTS\n" \
 							"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
 						app.name.c_str(),
-						conditional,
+						dont_makearchive_conditional_begin.c_str(),
+						dont_makearchive_conditional_end.c_str(),
 						library_dependency.name.c_str());
 				}
 
@@ -2217,10 +2235,11 @@ struct CMakeWriter
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 							"\tCOMMAND_EXPAND_LISTS)\n",
 						app.name.c_str(),
-						conditional);
+						dont_makearchive_conditional_begin.c_str(),
+						dont_makearchive_conditional_end.c_str());
 				}
 			}
 		}
@@ -2234,10 +2253,11 @@ struct CMakeWriter
 			sb.AppendFormat(
 				"add_custom_command(\n" \
 					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND %s \"$<1:${args}>\"\n" \
+					"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 					"\tCOMMAND_EXPAND_LISTS)\n",
 					app.name.c_str(),
-					conditional);
+					dont_makearchive_conditional_begin.c_str(),
+					dont_makearchive_conditional_end.c_str());
 
 			sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data\")\n",
 				app.resource_path.c_str(),
@@ -2245,10 +2265,11 @@ struct CMakeWriter
 			sb.AppendFormat(
 				"add_custom_command(\n" \
 					"\tTARGET %s POST_BUILD\n" \
-					"\tCOMMAND %s \"$<1:${args}>\"\n" \
+					"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 					"\tCOMMAND_EXPAND_LISTS)\n",
 					app.name.c_str(),
-					conditional);
+					dont_makearchive_conditional_begin.c_str(),
+					dont_makearchive_conditional_end.c_str());
 		}
 
 		// copy library resources
@@ -2267,11 +2288,13 @@ struct CMakeWriter
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 							"\tCOMMAND_EXPAND_LISTS)\n",
 							app.name.c_str(),
-							conditional);
+							dont_makearchive_conditional_begin.c_str(),
+							dont_makearchive_conditional_end.c_str());
 
+				// todo : use conditionals when generating args, so we can be sure it won't execute. is this possible?
 					sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_directory \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s/data/libs/%s\")\n",
 						library->resource_path.c_str(),
 						app.name.c_str(),
@@ -2279,10 +2302,11 @@ struct CMakeWriter
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 							"\tCOMMAND_EXPAND_LISTS)\n",
 							app.name.c_str(),
-							conditional);
+							dont_makearchive_conditional_begin.c_str(),
+							dont_makearchive_conditional_end.c_str());
 				}
 			}
 		}
@@ -2533,11 +2557,31 @@ struct CMakeWriter
 
 		// turn shared libraries into non-shared for iphoneos, since I didn't manage
 		// to do code signing propertly yet, and iphoneos refuses to load our .dylibs
-		
 		if (s_platform == "iphoneos")
 		{
+		// todo : run code signing on generated shared libraries for macos/iphoneos
 			for (auto & library : libraries)
 				library->shared = false;
+		}
+		
+		// always build a self-contained archive for iphoneos, as any build type
+		// could be deployed on an actual device, and the app won't have access
+		// to the local filesystem for loading resources and librairies
+		if (s_platform == "iphoneos")
+		{
+			dont_makearchive_conditional_begin = "$<$<BOOL:false>:";
+			dont_makearchive_conditional_end = ">";
+
+			makearchive_conditional_begin = "$<$<BOOL:true>:";
+			makearchive_conditional_end = ">";
+		}
+		else
+		{
+			dont_makearchive_conditional_begin = "$<$<NOT:$<CONFIG:Distribution>>:";
+			dont_makearchive_conditional_end = ">";
+
+			makearchive_conditional_begin = "$<$<CONFIG:Distribution>:";
+			makearchive_conditional_end = ">";
 		}
 		
 		// write CMake output
@@ -2874,7 +2918,7 @@ struct CMakeWriter
 				
 				if (is_platform("android"))
 				{
-					// note : on android there are no real standalone executable,
+					// note : on android there are no real standalone executables,
 					//        only shared libraries, loaded by a Java-defined activity
 					sb.Append("add_library(");
 					sb.Append(app->name.c_str());
@@ -2932,9 +2976,11 @@ struct CMakeWriter
 						if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *app, resource_path))
 							return false;
 						
-						sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
+						sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATH=\"%s\"%s)\n",
 							app->name.c_str(),
-							app->resource_path.c_str());
+							dont_makearchive_conditional_begin.c_str(),
+							app->resource_path.c_str(),
+							dont_makearchive_conditional_end.c_str());
 						sb.Append("\n");
 					}
 					else if (s_platform == "iphoneos")
@@ -2950,14 +2996,18 @@ struct CMakeWriter
 					}
 					else
 					{
-                        sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<NOT:$<CONFIG:Distribution>>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
+                        sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATH=\"%s\"%s)\n",
                             app->name.c_str(),
-                            app->resource_path.c_str());
+                            dont_makearchive_conditional_begin.c_str(),
+                            app->resource_path.c_str(),
+                            dont_makearchive_conditional_end.c_str());
                         sb.Append("\n");
 
-                        sb.AppendFormat("target_compile_definitions(%s PRIVATE $<$<CONFIG:Distribution>:CHIBI_RESOURCE_PATH=\"%s\">)\n",
+                        sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATH=\"%s\"%s)\n",
                             app->name.c_str(),
-                            "data");
+                            dont_makearchive_conditional_begin.c_str(),
+                            "data",
+                            dont_makearchive_conditional_end.c_str());
                         sb.Append("\n");
 					}
 				}
@@ -3065,12 +3115,22 @@ struct CMakeWriter
 					}
 				}
 				
+				if (s_platform == "iphoneos")
+				{
+					// note : APPLE_GUI_IDENTIFIER must be set before generate_plist
+					// todo : imagine a clean way to set the identifier
+					sb.AppendFormat("set(APPLE_GUI_IDENTIFIER \"com.chibi.%s\")\n",
+						app->name.c_str());
+				}
+				
 				if (s_platform == "macos" || s_platform == "iphoneos")
 				{
 					// generate plist text
 					
 					std::string text;
 					
+				// todo : let these plist flags originate from apps/libraries that need them
+				// todo : add opportunity to merge with custom plist files, for advanced plist settings
 					if (!generate_plist(nullptr, app->name.c_str(),
 						kPlistFlag_HighDpi |
 						kPlistFlag_AccessWebcam |
@@ -3081,39 +3141,34 @@ struct CMakeWriter
 						return false;
 					}
 					
+					// write the plist file to disk
+					
 					char plist_path[PATH_MAX];
 					if (!concat(plist_path, sizeof(plist_path), generated_path, "/", app->name.c_str(), ".plist"))
 					{
 						report_error(nullptr, "failed to create plist path");
 						return false;
 					}
-					
-					if (s_platform == "iphoneos")
-					{
-						// todo : imagine a clean way to set the identifier
-						sb.AppendFormat("set(APPLE_GUI_IDENTIFIER \"com.chibi.%s\")\n",
-							app->name.c_str());
-					}
 
 					if (!write_text_to_file_if_contents_changed(sb, text.c_str(), plist_path))
 						return false;
 
+					// tell cmake to use our generated plist file
+					
 					sb.AppendFormat("set_target_properties(%s PROPERTIES MACOSX_BUNDLE_INFO_PLIST \"%s\")\n",
 						app->name.c_str(),
 						plist_path);
 					sb.Append("\n");
 				}
-			#endif
 
 				if (s_platform == "macos")
 				{
 					// add rpath to the generated executable so that it can find dylibs inside the location of the executable itself. this is needed when copying generated shared libraries into the app bundle
 					
-					// note : we use a conditional to check if we're building a deployment app bundle
+					// note : we use a conditional to check if we're building a distribution app bundle
 					//        ideally CMake would have build config dependent custom commands,
-					//        this is really just a workaround/hack for missing behavior
-					
-					const char * conditional = "$<$<NOT:$<CONFIG:Distribution>>:echo>";
+					//        but since it doesn't, we prepend 'echo' to the command, depending on
+					//        whether this is a distribution build or not
 				
 				// fixme : cmake is broken and always runs the custom command, regardless of whether the DEPENDS target is dirty or not. this causes install_name_tool to fail, as the rpath has already been set. I've appended "|| true" at the end of the command, to effectively ignore the return code from install_name_tool. a nasty side effect of this is we don't know whether the command succeeded or actually failed for some valid reason.. so ideally this hack is removed once cmake's behavior is fixed
 				
@@ -3122,11 +3177,12 @@ struct CMakeWriter
 					sb.AppendFormat(
 						"add_custom_command(\n" \
 							"\tTARGET %s POST_BUILD\n" \
-							"\tCOMMAND %s \"$<1:${args}>\"\n" \
+							"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
 							"\tCOMMAND_EXPAND_LISTS\n" \
 							"\tDEPENDS %s)\n",
 						app->name.c_str(),
-						conditional,
+						dont_makearchive_conditional_begin.c_str(),
+						dont_makearchive_conditional_end.c_str(),
 						app->name.c_str());
 					
 					sb.Append("\n");
@@ -3295,7 +3351,7 @@ static bool get_current_working_directory(char * out_cwd, const int out_cwd_size
 	return true;
 }
 
-bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool skip_file_scan, const char * platform)
+static bool chibi_process(ChibiInfo & chibi_info, const char * build_root, const bool skip_file_scan, const char * platform)
 {
 	// set the platform name
 	
