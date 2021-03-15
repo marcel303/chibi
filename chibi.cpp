@@ -2681,7 +2681,7 @@ struct CMakeWriter
 			// fixme : this should be defined through the user's workspace
 				if (s_platform == "macos")
 				{
-					sb.Append("add_compile_options(-mavx2)\n");
+					//sb.Append("add_compile_options(-mavx2)\n");
 				}
 				
 				if (s_platform == "windows")
