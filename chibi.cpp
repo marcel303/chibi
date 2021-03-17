@@ -2019,39 +2019,48 @@ struct CMakeWriter
 						
 						// but first make sure the target directory exists
 						
-					// todo : should only copy frameworks when distribution build
+						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Frameworks\")\n");
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND ${CMAKE_COMMAND} -E make_directory \"${BUNDLE_PATH}/Contents/Frameworks\"\n" \
+								"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
 								"\tDEPENDS \"%s\")\n",
 							app.name.c_str(),
+							dont_makearchive_conditional_begin.c_str(),
+							dont_makearchive_conditional_end.c_str(),
 							library_dependency.path.c_str());
 						
-					// todo : should only copy frameworks when distribution build
 						// rsync
+						sb.AppendFormat("set(args rsync -r --links \"%s\" \"${BUNDLE_PATH}/Contents/Frameworks\")\n",
+							library_dependency.path.c_str());
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND rsync -r --links \"%s\" \"${BUNDLE_PATH}/Contents/Frameworks\"\n" \
+								"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
 								"\tDEPENDS \"%s\")\n",
 							app.name.c_str(),
-							library_dependency.path.c_str(),
+							dont_makearchive_conditional_begin.c_str(),
+							dont_makearchive_conditional_end.c_str(),
 							library_dependency.path.c_str());
 					}
 					else
 					{
 						// just copy the file (if it has changed or doesn't exist)
 						
-					// todo : should only copy library files when distribution build
+						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${BUNDLE_PATH}/Contents/MacOS/%s\")\n",
+							library_dependency.path.c_str(),
+							filename);
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${BUNDLE_PATH}/Contents/MacOS/%s\"\n" \
+								"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
 								"\tDEPENDS \"%s\")\n",
 							app.name.c_str(),
-							library_dependency.path.c_str(),
-							filename,
+							dont_makearchive_conditional_begin.c_str(),
+							dont_makearchive_conditional_end.c_str(),
 							library_dependency.path.c_str());
 					}
 				}
@@ -2120,35 +2129,38 @@ struct CMakeWriter
 				
 				if (library->shared)
 				{
-				// todo : skip this step when creating a non-distribution build ?
-				// todo : when this step is skipped for non-distribution, perhaps may want to skip copying frameworks too ..
-				
 					// copy generated shared object files into a place where the executable can find it
 					
 					if (s_platform == "macos")
 					{
-					// todo : should only copy frameworks when distribution build
-					// todo : %secho%s trick doesn't works unless we also use the COMMAND_EXPAND_LISTS option
+						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${BUNDLE_PATH}/Contents/MacOS/$<TARGET_FILE_NAME:%s>\")\n",
+							library_dependency.name.c_str(),
+							library_dependency.name.c_str());
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${BUNDLE_PATH}/Contents/MacOS/$<TARGET_FILE_NAME:%s>\"\n" \
+								"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
 								"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
 							app.name.c_str(),
-							library_dependency.name.c_str(),
-							library_dependency.name.c_str(),
+							dont_makearchive_conditional_begin.c_str(),
+							dont_makearchive_conditional_end.c_str(),
 							library_dependency.name.c_str());
 					}
 					else if (s_platform == "iphoneos")
 					{
+						sb.AppendFormat("set(args ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${BUNDLE_PATH}/$<TARGET_FILE_NAME:%s>\")\n",
+							library_dependency.name.c_str(),
+							library_dependency.name.c_str());
 						sb.AppendFormat(
 							"add_custom_command(\n" \
 								"\tTARGET %s POST_BUILD\n" \
-								"\tCOMMAND ${CMAKE_COMMAND} -E copy_if_different \"$<TARGET_FILE:%s>\" \"${BUNDLE_PATH}/$<TARGET_FILE_NAME:%s>\"\n" \
+								"\tCOMMAND %secho%s \"$<1:${args}>\"\n" \
+								"\tCOMMAND_EXPAND_LISTS\n" \
 								"\tDEPENDS \"$<TARGET_FILE:%s>\")\n",
 							app.name.c_str(),
-							library_dependency.name.c_str(),
-							library_dependency.name.c_str(),
+							dont_makearchive_conditional_begin.c_str(),
+							dont_makearchive_conditional_end.c_str(),
 							library_dependency.name.c_str());
 					}
 					
@@ -2330,31 +2342,12 @@ struct CMakeWriter
 	
 	static void write_set_osx_bundle_path(StringBuilder & sb, const char * app_name)
 	{
-	#if 1
-		// note : the TARGET_FILE_DIR approach replaces the older but known working method of trying to manually
-		//        pasting together the app bundle pathh. if this method works successfully the old method may be removed
-		sb.AppendFormat("\tset(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>/../..\")\n", app_name);
-	#else
-		// mysterious code snippet to fetch GENERATOR_IS_MULTI_CONFIG.
-		// why can't I just use GENERATOR_IS_MULTI_CONFIG directly inside the if statement...
-		sb.AppendFormat("get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)\n");
-
-		// the output location depends on the build system being used. CMake offers no real
-		// way in helping figure out the correct path, so we use a function here which sort
-		// of guesses the right location for our app bundle
-		// really.. you would think your build system would help you out here.. but it doesn't and
-		// the internet is littered with people asking the same question over and over...
-		sb.AppendFormat("if (is_multi_config)\n");
-		sb.AppendFormat("\tset(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/%s.app\")\n", app_name);
-		sb.AppendFormat("else ()\n");
-		sb.AppendFormat("\tset(BUNDLE_PATH \"${CMAKE_CURRENT_BINARY_DIR}/%s.app\")\n", app_name);
-		sb.AppendFormat("endif ()\n");
-	#endif
+		sb.AppendFormat("set(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>/../..\")\n\n", app_name);
 	}
 
 	static void write_set_ios_bundle_path(StringBuilder & sb, const char * app_name)
 	{
-		sb.AppendFormat("\tset(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>\")\n", app_name);
+		sb.AppendFormat("set(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>\")\n\n", app_name);
 	}
 
 	static bool generate_translation_unit_linkage_files(const ChibiInfo & chibi_info, StringBuilder & sb, const char * generated_path, const std::vector<ChibiLibrary*> & libraries)
@@ -2451,6 +2444,7 @@ struct CMakeWriter
 
 		sb.AppendFormat("file(WRITE \"%s.txt\" \"%s\")\n", filename, escaped_text.c_str());
 		sb.AppendFormat("file(GENERATE OUTPUT \"%s\" INPUT \"%s.txt\")\n", filename, filename);
+		sb.Append("\n");
 
 		return true;
 	}
@@ -3195,7 +3189,7 @@ struct CMakeWriter
 				if (s_platform == "macos" || s_platform == "iphoneos")
 				{
 					// unset bundle path when we're done processing this app
-					sb.Append("unset(BUNDLE_PATH)\n");
+					sb.Append("unset(BUNDLE_PATH)\n\n");
 				}
 
 				if (!output(f, sb))
