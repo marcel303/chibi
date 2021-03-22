@@ -307,7 +307,10 @@ struct CMakeWriter
 		}
 
 		// rsync
-		write_custom_command_for_distribution_va(sb, app.name.c_str(), library.resource_path.c_str(), "rsync -r --links %s \"%s/\" \"%s\"",
+		write_custom_command_for_distribution_va(sb,
+			app.name.c_str(),
+			library.resource_path.c_str(),
+			"rsync -r --links %s \"%s/\" \"%s\"",
 			exclude_args.text.c_str(),
 			library.resource_path.c_str(),
 			destination_path);
@@ -337,6 +340,7 @@ struct CMakeWriter
 		command.AppendFormat(
 			"${CMAKE_COMMAND} -E make_directory \"%s\"",
 			destination_path);
+		
 		write_custom_command_for_distribution(sb,
 			app.name.c_str(),
 			nullptr,
