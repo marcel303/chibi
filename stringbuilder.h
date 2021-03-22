@@ -26,5 +26,10 @@ namespace chibi
 		}
 		
 		void AppendFormat(const char * format, ...);
+		
+		void Reset()
+		{
+			text.clear();
+		}
 	};
 }

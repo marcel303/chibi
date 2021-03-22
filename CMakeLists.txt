@@ -20,6 +20,7 @@ add_executable(
 	stringbuilder.cpp
 	stringbuilder.h
 	stringhelpers.h
+	write-cmake.cpp
 	write-gradle.cpp
 	main.cpp)
 
