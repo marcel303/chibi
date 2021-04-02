@@ -2,6 +2,7 @@
 #include "filesystem.h"
 #include "stringhelpers.h"
 
+#include <algorithm> // std::remove_if, std::replace
 #include <assert.h>
 #include <limits.h>
 #include <stdarg.h>
