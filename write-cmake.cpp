@@ -1322,7 +1322,7 @@ struct CMakeWriter
 				sb.Append("\n");
 
 				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND NOT CMAKE_CL_64)\n");
-				sb.Append("\tadd_compile_options(/arch:AVX2)\n");
+//				sb.Append("\tadd_compile_options(/arch:AVX2)\n");
 				sb.Append("\tadd_definitions(-D__SSE2__)\n"); // MSVC doesn't define __SSE__, __SSE2__ and the likes. although it _does_ define __AVX__ and __AVX2__
 				sb.Append("\tadd_definitions(-D__SSSE3__)\n");
 				sb.Append("endif ()\n");
