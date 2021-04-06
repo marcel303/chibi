@@ -414,7 +414,7 @@ struct CMakeWriter
 				if (toolchain != nullptr)
 				{
 					sb.AppendFormat("if (%s)\n", toolchain);
-					sb.Append("\t"); // todo : improved indent support
+					sb.Append("\t");
 				}
 				
 				const char * visibility = compile_definition.expose
@@ -1682,8 +1682,10 @@ struct CMakeWriter
 								resource_path = "${BUNDLE_PATH}/Contents/Resources/libs";
 							else if (s_platform == "iphoneos")
 								resource_path = "${BUNDLE_PATH}/libs";
+							else if (s_platform == "windows")
+								continue; // note : windows is handled separately in write_create_windows_app_archive
 							else
-								continue; // todo : add windows and linux here
+								continue; // todo : add linux here
 							
 							assert(resource_path != nullptr);
 							if (resource_path != nullptr)
@@ -1765,7 +1767,7 @@ struct CMakeWriter
 					}
 				}
 				
-				if (s_platform == "iphoneos")
+				if (s_platform == "macos" || s_platform == "iphoneos")
 				{
 					// note : APPLE_GUI_IDENTIFIER must be set before generate_plist
 					// todo : imagine a clean way to set the identifier
@@ -1838,6 +1840,12 @@ struct CMakeWriter
 				{
 					// unset bundle path when we're done processing this app
 					sb.Append("unset(BUNDLE_PATH)\n\n");
+				}
+				
+				if (s_platform == "macos" || s_platform == "iphoneos")
+				{
+					// unset apple app identifier when we're done processing this app
+					sb.Append("unset(APPLE_GUI_IDENTIFIER)");
 				}
 
 				if (!output(f, sb))

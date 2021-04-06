@@ -17,8 +17,6 @@
 
 // note : we do not overwrite files when they did not change. Gradle/NDK build will rebuild targets when the build files are newer than the output files
 
-// todo : crunchPngs false
-
 //
 
 #define ENABLE_LOGGING 0 // do not alter
@@ -128,6 +126,8 @@ static bool pop_dir()
 
 	return true;
 }
+
+// todo : figure out how to generate/specify Manifest files. there's a lot of OculusVR/framework specific stuff in the manifest templates below
 
 static const char * s_androidManifestTemplateForApp =
 R"MANIFEST(<?xml version="1.0" encoding="utf-8"?>
@@ -592,7 +592,7 @@ namespace chibi
 					s << "    ";
 					}
 				#endif
-					//s << "    crunchPngs false";
+					s << "    crunchPngs false"; // crunching pngs takes forever.. we don't want to wait ages when testing on the device
 					s << "  }";
 					s << "";
 				#if NATIVE_BUILD_TYPE == NB_NDK
