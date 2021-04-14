@@ -4,7 +4,7 @@
 
 #include <algorithm> // std::remove_if, std::replace
 #include <assert.h>
-#include <limits.h>
+#include <limits.h> // PATH_MAX
 #include <stdarg.h>
 #include <string>
 #include <string.h>

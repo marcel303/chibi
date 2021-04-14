@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <deque>
+#include <limits.h> // PATH_MAX
 #include <set>
 #include <stdarg.h>
 #include <string>
