@@ -1641,25 +1641,20 @@ struct CMakeWriter
 						if (!write_copy_resources_for_distribution_using_rsync(sb, *app, *app, resource_path))
 							return false;
 						
+						// note : for iphoneos we always copy resources (so a build can always be run and debugged on
+						//        a device). this means the main resource path will just be '.'
 						sb.AppendFormat("target_compile_definitions(%s PRIVATE CHIBI_RESOURCE_PATH=\".\")\n",
 							app->name.c_str());
 						sb.Append("\n");
 					}
 					else
 					{
-                        sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATH=\"%s\"%s)\n",
-                            app->name.c_str(),
-                            dont_makearchive_conditional_begin.c_str(),
-                            app->resource_path.c_str(),
-                            dont_makearchive_conditional_end.c_str());
-                        sb.Append("\n");
-
-                        sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATH=\"%s\"%s)\n",
-                            app->name.c_str(),
-                            dont_makearchive_conditional_begin.c_str(),
-                            "data",
-                            dont_makearchive_conditional_end.c_str());
-                        sb.Append("\n");
+						sb.AppendFormat("target_compile_definitions(%s PRIVATE %sCHIBI_RESOURCE_PATH=\"%s\"%s)\n",
+							app->name.c_str(),
+							dont_makearchive_conditional_begin.c_str(),
+							app->resource_path.c_str(),
+							dont_makearchive_conditional_end.c_str());
+						sb.Append("\n");
 					}
 				}
 				
