@@ -489,15 +489,15 @@ namespace chibi
 				s << "  }";
 				s << "  ";
 				s << "  dependencies {";
-				s << "    classpath 'com.android.tools.build:gradle:3.2.0'";
+				s << "    classpath 'com.android.tools.build:gradle:4.1.3'";
 				s << "  }";
 				s << "}";
 				s << "";
 				s << "allprojects {";
-				s << "    repositories {";
-				s << "        google()";
-				s << "      jcenter()";
-				s << "    }";
+				s << "  repositories {";
+				s << "    google()";
+				s << "    jcenter()";
+				s << "  }";
 				s << "}";
 			}
 			if (!endFile())
@@ -659,7 +659,7 @@ namespace chibi
 					}
 					if (true)
 					{
-					s << "  lintOptions{";
+					s << "  lintOptions {";
 					s << "      disable 'ExpiredTargetSdkVersion'";
 					s << "  }";
 					s << "  ";
