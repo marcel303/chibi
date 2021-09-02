@@ -13,7 +13,7 @@
 #include <string>
 
 #ifdef _MSC_VER
-	#include <stdlib.h> _MAX_PATH
+	#include <stdlib.h> // _MAX_PATH
 	#ifndef PATH_MAX
 		#define PATH_MAX _MAX_PATH
 	#endif
