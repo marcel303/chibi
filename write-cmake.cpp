@@ -1478,6 +1478,9 @@ struct CMakeWriter
 				else
 					sb.Append("\n\tSTATIC");
 				
+				if (library->prebuilt)
+					sb.Append(" IMPORTED");
+				
 				for (auto & file : library->files)
 				{
 					sb.Append("\n\t");
@@ -1497,6 +1500,17 @@ struct CMakeWriter
 				
 				sb.Append(")\n");
 				sb.Append("\n");
+				
+				if (library->prebuilt)
+				{
+					// special case: set imported library location
+					sb.Append("# (this library import is auto-generated from a embed_framework local library dependency)\n");
+					sb.Append("set_target_properties("); sb.Append(library->name.c_str());
+					sb.Append("\n\tPROPERTIES IMPORTED_LOCATION");
+					sb.Append("\n\t"); sb.Append(library->path.c_str());
+					sb.Append(")\n");
+					sb.Append("\n");
+				}
 				
 				if (library->group_name.empty() == false)
 				{
