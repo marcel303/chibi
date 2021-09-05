@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "stringhelpers.h" // todo : move to cpp file
-using namespace chibi; // todo : move to cpp file
 
 #define ENABLE_PKGCONFIG 0 // todo : pkgconfig shouldn't be used in chibi.txt files. but it would be nice to define libraries using pkgconfig externally, as a sort of aliases, which can be used in a normalized fashion as a regular library
 
@@ -144,6 +143,12 @@ struct ChibiInfo
 	
 	std::vector<std::string> cmake_module_paths;
 	
+	~ChibiInfo()
+	{
+		for (auto * library : libraries)
+			delete library;
+	}
+	
 	bool library_exists(const char * name) const
 	{
 		for (auto & library : libraries)
@@ -173,7 +178,7 @@ struct ChibiInfo
 		else
 		{
 			for (auto & build_target : build_targets)
-				if (match_wildcard(name, build_target.c_str(), ';'))
+				if (chibi::match_wildcard(name, build_target.c_str(), ';'))
 					return true;
 		}
 		

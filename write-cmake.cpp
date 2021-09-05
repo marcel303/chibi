@@ -26,6 +26,7 @@
 	#define sscanf_s sscanf
 #endif
 
+using namespace chibi;
 using namespace chibi_filesystem;
 
 static void report_error(const char * line, const char * format, ...)
@@ -781,7 +782,7 @@ struct CMakeWriter
 				
 				for (auto & dist_file : library->dist_files)
 				{
-					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
+					// create a custom command where the generated file(s) are copied into a place where the executable can find it
 					
 					const char * filename;
 				
@@ -976,7 +977,7 @@ struct CMakeWriter
 
 	static void write_set_ios_bundle_path(StringBuilder & sb, const char * app_name)
 	{
-		sb.AppendFormat("set(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>\")\n\n", app_name);
+		sb.AppendFormat("set(BUNDLE_PATH \"\\$\\{CONFIGURATION_BUILD_DIR\\}/\\$\\{CONTENTS_FOLDER_PATH\\}\")\n\n", app_name);
 	}
 
 	static bool generate_translation_unit_linkage_files(const ChibiInfo & chibi_info, StringBuilder & sb, const char * generated_path, const std::vector<ChibiLibrary*> & libraries)
@@ -1468,6 +1469,9 @@ struct CMakeWriter
 				else
 					sb.Append("\n\tSTATIC");
 				
+				if (library->prebuilt)
+					sb.Append(" IMPORTED");
+				
 				for (auto & file : library->files)
 				{
 					sb.Append("\n\t");
@@ -1487,6 +1491,17 @@ struct CMakeWriter
 				
 				sb.Append(")\n");
 				sb.Append("\n");
+				
+				if (library->prebuilt)
+				{
+					// special case: set imported library location
+					sb.Append("# (this library import is auto-generated from a embed_framework local library dependency)\n");
+					sb.Append("set_target_properties("); sb.Append(library->name.c_str());
+					sb.Append("\n\tPROPERTIES IMPORTED_LOCATION");
+					sb.Append("\n\t"); sb.Append(library->path.c_str());
+					sb.Append(")\n");
+					sb.Append("\n");
+				}
 				
 				if (library->group_name.empty() == false)
 				{
