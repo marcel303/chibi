@@ -986,7 +986,7 @@ struct CMakeWriter
 
 	static void write_set_ios_bundle_path(StringBuilder & sb, const char * app_name)
 	{
-		sb.AppendFormat("set(BUNDLE_PATH \"$<TARGET_FILE_DIR:%s>\")\n\n", app_name);
+		sb.AppendFormat("set(BUNDLE_PATH \"\\$\\{CONFIGURATION_BUILD_DIR\\}/\\$\\{CONTENTS_FOLDER_PATH\\}\")\n\n", app_name);
 	}
 
 	static bool generate_translation_unit_linkage_files(const ChibiInfo & chibi_info, StringBuilder & sb, const char * generated_path, const std::vector<ChibiLibrary*> & libraries)
