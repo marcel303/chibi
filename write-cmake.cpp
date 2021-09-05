@@ -26,6 +26,7 @@
 	#define sscanf_s sscanf
 #endif
 
+using namespace chibi;
 using namespace chibi_filesystem;
 
 static void report_error(const char * line, const char * format, ...)
@@ -781,7 +782,7 @@ struct CMakeWriter
 				
 				for (auto & dist_file : library->dist_files)
 				{
-					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
+					// create a custom command where the generated file(s) are copied into a place where the executable can find it
 					
 					const char * filename;
 				
@@ -910,7 +911,7 @@ struct CMakeWriter
 						nullptr,
 						"${CMAKE_COMMAND} -E copy_if_different \"%s\" \"${CMAKE_CURRENT_BINARY_DIR}/%s\"",
 						dist_file.c_str(),
-						filename);
+						app.name.c_str());
 				}
 			}
 		}
