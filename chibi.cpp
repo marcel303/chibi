@@ -1632,8 +1632,13 @@ bool chibi_generate(const char * in_cwd, const char * src_path, const char * dst
 	if (chibi_process(chibi_info, build_root, false, platform) == false)
 		return false;
 	
-	printf("found %d libraries and apps in total\n", (int)chibi_info.libraries.size());
-
+	int num_build_targets = 0;
+	for (auto * library : chibi_info.libraries)
+		if (chibi_info.should_build_target(library->name.c_str()))
+			num_build_targets++;
+		
+	printf("found %d libraries and apps in total, of which %d marked as target\n", (int)chibi_info.libraries.size(), num_build_targets);
+	
 	// write cmake file
 	
 	char output_filename[PATH_MAX];
