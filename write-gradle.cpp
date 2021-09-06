@@ -649,11 +649,17 @@ namespace chibi
 					s << "    }";
 					s << "  }";
 					s << "  ";
-					// signing config
 					s << "  buildTypes {";
 					s << "    release {";
-					s << "      // sign with debug keys, so release builds can be run";
+					// signing config
+					s << "      // sign with debug keys, so release builds can be run on physical devices";
 					s << "      signingConfig signingConfigs.debug";
+					// crunchPngs
+					s << "      // crunching pngs takes forever.. we don't want to wait ages when testing on the device";
+					s << "      crunchPngs false";
+					s << "    }";
+					s << "    debug {";
+					s << "      ext.enableCrashlytics = false";
 					s << "    }";
 					s << "  }";
 					}
