@@ -49,7 +49,7 @@ static void report_error(const char * line, const char * format, ...)
 	printf("error: %s\n", text);
 }
 
-struct S : StringBuilder
+struct S : chibi::StringBuilder
 {
 	S & operator>>(const char * text)
 	{

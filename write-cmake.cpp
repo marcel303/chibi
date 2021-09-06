@@ -897,15 +897,6 @@ struct CMakeWriter
 				{
 					// create a custom command where the embedded file(s) are copied into a place where the executable can find it
 					
-					const char * filename;
-				
-					auto i = dist_file.find_last_of('/');
-				
-					if (i == std::string::npos)
-						filename = dist_file.c_str();
-					else
-						filename = &dist_file[i + 1];
-
 					write_custom_command_for_distribution_va(sb,
 						app.name.c_str(),
 						nullptr,
