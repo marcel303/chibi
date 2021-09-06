@@ -565,6 +565,13 @@ namespace chibi
 					s << "    targetSdkVersion 25";
 					s << "    compileSdkVersion 26";
 					s << "    ";
+					s << "    aaptOptions {";
+					//s << "      // turn off asset compression for .cache, .png and .ogg files";
+					//s << "      noCompress 'cache', 'png', 'ogg'";
+					s << "      // turn off asset compression for all files";
+					s << "      noCompress ''";
+    				s << "    }";
+    				s << "    ";
 				#if NATIVE_BUILD_TYPE == NB_NDK
 					if (library->isExecutable)
 					{
@@ -592,7 +599,6 @@ namespace chibi
 					s << "    ";
 					}
 				#endif
-					s << "    crunchPngs false"; // crunching pngs takes forever.. we don't want to wait ages when testing on the device
 					s << "  }";
 					s << "";
 				#if NATIVE_BUILD_TYPE == NB_NDK
@@ -617,12 +623,8 @@ namespace chibi
 					s << "  sourceSets {";
 					s << "    main {";
 					s << "      manifest.srcFile 'AndroidManifest.xml'";
-					//if (library->isExecutable)
-					//s << "      java.srcDirs = ['../java']"; // fixme : make unshared by copying files
-					//s << "      jniLibs.srcDir 'libs'";
-					//s << "      res.srcDirs = ['res']";
 				#if NATIVE_BUILD_TYPE == NB_CMAKE
-					s << "      jniLibs.srcDir 'libs' // location of prebuilt .so files to include in the APK";
+					s << "      jniLibs.srcDirs = [] // explicitly disable libs dir for prebuilt .so files";
 					s << "      jni.srcDirs = [] // explicitly disable NDK build";
       			#endif
 					if (library->resource_path.empty() == false)
