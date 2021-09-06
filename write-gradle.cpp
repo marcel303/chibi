@@ -531,6 +531,66 @@ namespace chibi
 
 				beginFile("build.gradle");
 				{
+					// disable lint because it's sloooow. this needs to be before 'apply plugin'
+					// disabling lint commonly reduces the build time by more than 50%
+					s << "tasks.whenTaskAdded { task ->";
+    				s << "  if (task.name.equals('lint')) {";
+        			s << "    task.enabled = false";
+    				s << "  }";
+
+// mergeDebugJniLibFolders
+// stripDebugDebugSymbols
+
+				#if 0
+					const char * disabledTasks[] =
+					{
+						"generate%sUnitTestSources",
+						"pre%sUnitTestBuild",
+						"javaPreCompile%sUnitTest",
+						"compile%sUnitTestJavaWithJavac",
+						"process%sUnitTestJavaRes",
+						"test%sUnitTest",
+						"test",
+						"check",
+						"lint",
+						//"transformResourcesWithMergeJavaResFor%s",
+						//"process%sJavaRes",
+						//"check%sLibraries",
+						"compile%sShaders",
+						"merge%sShaders",
+						//"compile%sSources",
+						"prepareLintJar",
+						"compile%sRenderscript",
+						//"transformClassesAndResourcesWithSyncLibJarsFor%s",
+						//"transformNativeLibsWithStripDebugSymbolFor%s",
+						//"transformNativeLibsWithMergeJniLibsFor%s",
+						//"extract%sAnnotations",
+						//"generate%sResValues",
+						"compile%sNdk",
+						""
+					};
+					
+					const char * configs[] =
+					{
+						"Debug",
+						"Release",
+						""
+					};
+
+					for (int i = 0; disabledTasks[i][0] != 0; ++i)
+					{
+						for (int c = 0; configs[c][0] != 0; ++c)
+						{
+							char taskName[64];
+							sprintf_s(taskName, sizeof(taskName), disabledTasks[i], configs[c]);
+							s >> "  if (task.name.equals('" >> taskName << "')) { task.enabled = false }";
+						}
+					}
+				#endif
+
+					s << "}";
+					s << "";
+
 					if (library->isExecutable)
 						s << "apply plugin: 'com.android.application'";
 					else
