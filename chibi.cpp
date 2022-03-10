@@ -22,8 +22,6 @@ namespace chibi
 	bool write_gradle_files(const ChibiInfo & chibi_info, const char * output_path);
 }
 
-// todo : add basic wildcard support ("include/*.cpp")
-
 // todo : create library targets which are an alias for an existing system library, such as libusb, libsdl2, etc -> will allow to normalize library names, and to use either the system version or compile from source version interchangable
 
 // todo : add option to specify plist file for apps
@@ -97,7 +95,7 @@ namespace chibi
 	#define sscanf_s sscanf
 #endif
 
-static ssize_t s_current_line_length = 0; // fixme : make safe for concurrent use of library version of chibi
+static thread_local ssize_t s_current_line_length = 0;
 
 static bool file_exist(const char * path)
 {
@@ -198,6 +196,16 @@ static bool is_platform(const char * platform)
 		return true;
 	else
 		return false;
+}
+
+static bool is_platform_full(const char * platform)
+{
+	auto & platform_full =
+		s_platform_full.empty()
+		? s_platform
+		: s_platform_full;
+		
+	return match_element(platform_full.c_str(), platform, '|');
 }
 
 static void show_syntax_elem(const char * format, const char * description)
@@ -311,6 +319,20 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						continue;
 				}
 				
+				if (eat_word(linePtr, "with_platform_full"))
+				{
+					const char * platform;
+					
+					if (!eat_word_v2(linePtr, platform))
+					{
+						report_error(line, "with_platform_full without platform");
+						return false;
+					}
+					
+					if (is_platform_full(platform) == false)
+						continue;
+				}
+				
 				//
 				
 				if (eat_word(linePtr, "add"))
@@ -334,15 +356,17 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						const int length = s_current_line_length;
 						
-						if (!process_chibi_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan))
-						{
-							report_error(line, "failed to process chibi file: %s", chibi_file);
-							return false;
-						}
+						const bool success = process_chibi_file(chibi_info, chibi_file, group_stack.back(), skip_file_scan);
 						
 						s_currentLibrary = nullptr;
 						
 						s_current_line_length = length;
+						
+						if (success == false)
+						{
+							report_error(line, "failed to process chibi file: %s", chibi_file);
+							return false;
+						}
 					}
 				}
 				else if (eat_word(linePtr, "push_group"))
@@ -647,9 +671,9 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 					}
 					else
 					{
-						const char * extension;
+						const char * extensions;
 						
-						if (!eat_word_v2(linePtr, extension))
+						if (!eat_word_v2(linePtr, extensions))
 						{
 							report_error(line, "missing extension");
 							return false;
@@ -757,18 +781,20 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 						
 						auto filenames = listFiles(search_path, traverse);
 						
-						const bool is_wildcard = strchr(extension, '*') != nullptr;
+						const bool is_wildcard = strchr(extensions, '*') != nullptr;
 						
 						auto end = std::remove_if(filenames.begin(), filenames.end(), [&](const std::string & filename) -> bool
 							{
 								if (is_wildcard)
 								{
-									if (match_wildcard(filename.c_str(), extension, ';') == false)
+									if (match_wildcard(filename.c_str(), extensions, ';') == false)
 										return true;
 								}
 								else
 								{
-									if (get_path_extension(filename, true) != extension)
+									const auto extension = get_path_extension(filename.c_str(), true);
+									
+									if (match_element(extension.c_str(), extensions, '|') == false)
 										return true;
 								}
 							
@@ -1377,9 +1403,10 @@ static bool process_chibi_file(ChibiInfo & chibi_info, const char * filename, co
 				}
 			}
 		}
-
+		
 		free(line);
 		line = nullptr;
+		lineSize = 0;
 		
 		f.close();
 		

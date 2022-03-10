@@ -320,7 +320,7 @@ struct CMakeWriter
 		write_custom_command_for_distribution_va(sb,
 			app.name.c_str(),
 			library.resource_path.c_str(),
-			"rsync -r --links %s \"%s/\" \"%s\"",
+			"rsync -a %s \"%s/\" \"%s\"",
 			exclude_args.text.c_str(),
 			library.resource_path.c_str(),
 			destination_path);
@@ -724,7 +724,7 @@ struct CMakeWriter
 							library_dependency.path.c_str());
 						
 						// rsync
-						sb.AppendFormat("set(args rsync -r --links \"%s\" \"${BUNDLE_PATH}/Contents/Frameworks\")\n",
+						sb.AppendFormat("set(args rsync -a \"%s\" \"${BUNDLE_PATH}/Contents/Frameworks\")\n",
 							library_dependency.path.c_str());
 						sb.AppendFormat(
 							"add_custom_command(\n" \
@@ -1037,7 +1037,7 @@ struct CMakeWriter
 
 				if (!write_text_to_file_if_contents_changed(sb, text_sb.text.c_str(), full_path))
 				{
-					report_error(nullptr, "failed to write conglomerate file. path: %s", full_path);
+					report_error(nullptr, "failed to write translation unit linkage file. path: %s", full_path);
 					return false;
 				}
 				
@@ -1159,6 +1159,8 @@ struct CMakeWriter
 			
 			// generate conglomerate files
 			
+			std::vector<ChibiLibraryFile> filesToAdd;
+			
 			for (auto & files_by_conglomerate_itr : files_by_conglomerate)
 			{
 				auto & conglomerate_filename = files_by_conglomerate_itr.first;
@@ -1190,6 +1192,11 @@ struct CMakeWriter
 				if (library->conglomerate_groups.count(conglomerate_filename) != 0)
 					file.group = library->conglomerate_groups[conglomerate_filename];
 	
+				filesToAdd.push_back(file);
+			}
+			
+			for (auto & file : filesToAdd)
+			{
 				library->files.push_back(file);
 			}
 		}
