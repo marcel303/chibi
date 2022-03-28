@@ -1210,10 +1210,11 @@ struct CMakeWriter
 				library->shared = false;
 		}
 		
-		// always build a self-contained archive for iphoneos, as any build type
-		// could be deployed on an actual device, and the app won't have access
-		// to the local filesystem for loading resources and libraries
-		if (s_platform == "iphoneos")
+		// always build a self-contained archive for iphoneos and android,
+		// as any build type could be deployed on an actual device, and the
+		// app won't have access to the local filesystem for loading resources
+		// and libraries
+		if (s_platform == "iphoneos" || s_platform == "android")
 		{
 			dont_makearchive_conditional_begin = "$<$<BOOL:false>:";
 			dont_makearchive_conditional_end = ">";
@@ -1693,6 +1694,8 @@ struct CMakeWriter
 								resource_path = "${BUNDLE_PATH}/libs";
 							else if (s_platform == "windows")
 								continue; // note : windows is handled separately in write_create_windows_app_archive
+							else if (s_platform == "android")
+								continue; // note : android assets are copied through gradle sync tasks
 							else
 								continue; // todo : add linux here
 							

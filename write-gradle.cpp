@@ -531,6 +531,8 @@ namespace chibi
 
 				beginFile("build.gradle");
 				{
+					// -- gradle 'optimizations'
+					
 					// disable lint because it's sloooow. this needs to be before 'apply plugin'
 					// disabling lint commonly reduces the build time by more than 50%
 					s << "tasks.whenTaskAdded { task ->";
@@ -590,12 +592,67 @@ namespace chibi
 
 					s << "}";
 					s << "";
-
+					
+					// -- apply plugin
+					
 					if (library->isExecutable)
 						s << "apply plugin: 'com.android.application'";
 					else
 						s << "apply plugin: 'com.android.library'";
 					s << "";
+					
+					// -- asset sync
+					
+					if (library->isExecutable)
+					{
+						bool hasResourcePath = false;
+						
+						for (auto & library_dependency : library->library_dependencies)
+						{
+							if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+							{
+								auto * library = chibi_info.find_library(library_dependency.name.c_str());
+								
+								if (library->resource_path.empty() == false)
+								{
+									auto * id = make_valid_id(library->name.c_str());
+									
+									s >> "tasks.register('syncAssets_" >> id << "', Sync) {";
+									s >> "  from '" >> library->resource_path.c_str() << "'";
+									s >> "  into layout.buildDirectory.dir('chibi-assets/libs/" >> library->name.c_str() << "')";
+									s << "}";
+									s << "";
+									
+									hasResourcePath = true;
+								}
+							}
+						}
+						
+						for (auto & library_dependency : library->library_dependencies)
+						{
+							if (library_dependency.type == ChibiLibraryDependency::kType_Generated)
+							{
+								auto * library = chibi_info.find_library(library_dependency.name.c_str());
+								
+								if (library->resource_path.empty() == false)
+								{
+									auto * id = make_valid_id(library->name.c_str());
+									
+									s >> "preBuild.dependsOn syncAssets_" << id;
+								}
+							}
+						}
+						
+						if (hasResourcePath)
+							s << "";
+					}
+
+					// -- project dependencies
+					
+					// project dependencies were needed for asset sync, but having lots of project dependencies
+					// makes gradle build ****extremely**** slow. so as an optimization, asset sync has been
+					// moved to a single project (the app project) and adding the dependencies is skipped
+				#if false
 					s << "dependencies {";
 					// note : we need the dependencies for asset merging to work correctly
 					for (auto & library_dependency : library->library_dependencies)
@@ -603,6 +660,10 @@ namespace chibi
 							s >> "  implementation project(':" >> library_dependency.name.c_str() << "')";
 					s << "}";
 					s << "";
+				#endif
+					
+					// -- android
+					
 					s << "android {";
 					if (library->isExecutable)
 					{
@@ -687,8 +748,12 @@ namespace chibi
 					s << "      jniLibs.srcDirs = [] // explicitly disable libs dir for prebuilt .so files";
 					s << "      jni.srcDirs = [] // explicitly disable NDK build";
       			#endif
-					if (library->resource_path.empty() == false)
-					s >> "      assets.srcDirs = ['" >> library->resource_path.c_str() << "']";
+					if (library->isExecutable)
+					s << "      assets.srcDirs = [layout.buildDirectory.dir('chibi-assets')]";
+					else
+					s << "      assets.srcDirs = []";
+					if (library->isExecutable && library->resource_path.empty() == false)
+					s >> "      assets.srcDirs += ['" >> library->resource_path.c_str() << "']";
 					s << "    }";
 					s << "  }";
 					s << "";
