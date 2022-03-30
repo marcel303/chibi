@@ -24,6 +24,7 @@
 #define NB_CMAKE 1 // use a separately generated CMakeLists.txt for building apps
 #define NB_NDK   2 // use the NDK build system for building apps and libraries
 #define NATIVE_BUILD_TYPE NB_CMAKE
+#define DONT_GENERATE_LIBRARIES_ONLY_APPS 1
 
 //
 
@@ -511,8 +512,14 @@ namespace chibi
 			{
 				s << "rootProject.name = 'Project'";
 				s << "";
+				
 				for (auto & library : libraries)
+				{
+					if (DONT_GENERATE_LIBRARIES_ONLY_APPS && library->isExecutable == false)
+						continue;
+						
 					s >> "include ':" >> library->name.c_str() << "'";
+				}
 			}
 			if (!endFile())
 				return false;
@@ -520,6 +527,9 @@ namespace chibi
 
 		for (auto & library : libraries)
 		{
+			if (DONT_GENERATE_LIBRARIES_ONLY_APPS && library->isExecutable == false)
+				continue;
+				
 		// todo : add chibi option to set Android app id. if not set, auto-generate one
 		// todo : add chibi option to set Android manifest file. if not set, auto-generate one
 			std::string appId = std::string("com.chibi.generated.lib.") + make_valid_id(library->name.c_str());
@@ -652,7 +662,7 @@ namespace chibi
 					// project dependencies were needed for asset sync, but having lots of project dependencies
 					// makes gradle build ****extremely**** slow. so as an optimization, asset sync has been
 					// moved to a single project (the app project) and adding the dependencies is skipped
-				#if false
+				#if DONT_GENERATE_LIBRARIES_ONLY_APPS == 0
 					s << "dependencies {";
 					// note : we need the dependencies for asset merging to work correctly
 					for (auto & library_dependency : library->library_dependencies)
