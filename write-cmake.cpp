@@ -1328,6 +1328,11 @@ struct CMakeWriter
 				sb.Append("\tadd_definitions(-D__SSSE3__)\n");
 				sb.Append("endif ()\n");
 				sb.Append("\n");
+				sb.Append("if ((CMAKE_CXX_COMPILER_ID MATCHES \"MSVC\") AND CMAKE_CL_64)\n");
+				sb.Append("\tadd_definitions(-D__SSE2__)\n");
+				sb.Append("\tadd_definitions(-D__SSSE3__)\n");
+				sb.Append("endif ()\n");
+				sb.Append("\n");
 
 			// fixme : this should be defined through the user's workspace
 				if (s_platform == "macos")
