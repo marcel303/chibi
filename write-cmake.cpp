@@ -1276,8 +1276,12 @@ struct CMakeWriter
 				sb.Append("set(CMAKE_CXX_STANDARD 11)\n");
 				sb.Append("\n");
 				
-				sb.Append("set_property(GLOBAL PROPERTY USE_FOLDERS ON)\n");
-				sb.Append("\n");
+				if (s_platform != "windows")
+				{
+					// note : using folders broke in VS2019. having folders and targets with the same name causes issues
+					sb.Append("set_property(GLOBAL PROPERTY USE_FOLDERS ON)\n");
+					sb.Append("\n");
+				}
 
 				// this translates to -fPIC on linux, which is a requirement to build share libraries
 				// on macos this is a default option and always set
