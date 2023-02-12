@@ -1522,7 +1522,7 @@ struct CMakeWriter
 				
 				if (library->group_name.empty() == false)
 				{
-					sb.AppendFormat("set_target_properties(%s PROPERTIES FOLDER %s)\n",
+					sb.AppendFormat("set_target_properties(%s PROPERTIES FOLDER %s)\n\n",
 						library->name.c_str(),
 						library->group_name.c_str());
 				}
